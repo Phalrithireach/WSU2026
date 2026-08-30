@@ -218,3 +218,64 @@ During Week 4 I learned how to:
 - Configure missing data treatment
 - Understand OK, ALARM, and INSUFFICIENT_DATA states
 - Use CloudWatch alarms with custom Lambda metrics
+
+- ## Week 5 - Monitoring Documentation and Project Management
+
+During Week 5, the monitoring solution was documented and its completed work was organised using a GitHub Project dashboard.
+
+### CloudWatch Dashboard
+
+The `WSU2026-WebHealth-Dashboard` displays Availability and Latency metrics for:
+
+- Google
+- GitHub
+- Amazon
+
+### CloudWatch Alarms
+
+Six CloudWatch alarms monitor website health:
+
+- Three Availability alarms trigger when `Availability < 1`
+- Three Latency alarms trigger when `Latency > 1000 milliseconds`
+
+Alarm configuration and states are documented in the [Week 4 - CloudWatch Alarms](#week-4---cloudwatch-alarms) section above.
+
+### Operational Runbook
+
+Operational monitoring and troubleshooting procedures are documented in [RUNBOOK.md](RUNBOOK.md).
+
+The runbook explains how to:
+
+- Check the CloudWatch dashboard and alarms
+- Investigate website availability failures
+- Investigate high latency
+- Review Lambda logs
+- Run a manual Lambda test
+- Redeploy the application
+- Escalate unresolved problems
+
+### GitHub Project Dashboard
+
+Completed monitoring work is tracked in the **WSU2026 Web Health Project** GitHub Project dashboard.
+
+The project is linked to the `WSU2026` repository and contains the following completed items:
+
+- Web Health Lambda
+- Availability and Latency Metrics
+- Publish Metrics to CloudWatch
+- CloudWatch Dashboard
+- CloudWatch Alarms
+- README Documentation
+- Runbook Documentation
+
+Repository Projects page: [WSU2026 Projects](https://github.com/Phalrithireach/WSU2026/projects)
+
+### Week 5 Tasks Completed
+
+- [x] CloudWatch Dashboard configured
+- [x] Availability and Latency alarms configured
+- [x] README documentation completed
+- [x] Operational runbook created
+- [x] GitHub Project dashboard created
+- [x] Completed tasks recorded on the project board
+- [x] GitHub Project linked to the repository
