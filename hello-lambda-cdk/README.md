@@ -279,3 +279,38 @@ Repository Projects page: [WSU2026 Projects](https://github.com/Phalrithireach/W
 - [x] GitHub Project dashboard created
 - [x] Completed tasks recorded on the project board
 - [x] GitHub Project linked to the repository
+
+## Week 6 – CloudWatch Alarm Logging
+
+This project records CloudWatch alarm state changes in DynamoDB.
+
+### Architecture
+
+CloudWatch Alarm → EventBridge Rule → Lambda Function → DynamoDB Table
+
+### AWS Resources
+
+- Lambda: `AlarmLoggerFunction`
+- DynamoDB table: `WSU2026-WebHealth-AlarmLogs`
+- EventBridge rule: listens for CloudWatch alarm state changes
+- SNS topic: `WSU2026-WebHealth-Alarms`
+
+### How It Works
+
+1. A CloudWatch alarm changes state.
+2. EventBridge captures the state-change event.
+3. EventBridge invokes the alarm-logging Lambda.
+4. The Lambda stores the alarm name, state, reason, and timestamp in DynamoDB.
+5. Alarms entering the `ALARM` state also send an SNS email notification.
+
+### Verification
+
+The solution was tested by changing `Amazon-Availability-Alarm-CDK` from `OK` to `ALARM`.
+
+The following results were confirmed:
+
+- SNS email notification received
+- `ALARM` event stored in DynamoDB
+- Alarm returned to `OK`
+- `OK` event stored in DynamoDB
+- CloudFormation stack status: `UPDATE_COMPLETE`
