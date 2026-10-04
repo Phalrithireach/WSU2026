@@ -1,3 +1,76 @@
+# WSU2026 DevOps Web Health Monitor
+
+## Project Overview
+
+This project uses AWS CDK and AWS Lambda to monitor the health of multiple websites.
+
+The Web Health Lambda checks each website and collects:
+
+- Website availability
+- HTTP status
+- Response latency
+
+The collected metrics are published to Amazon CloudWatch. CloudWatch dashboards display the metrics, while CloudWatch alarms monitor availability and latency thresholds.
+
+Amazon SNS is used for email notifications, and CloudWatch alarm state changes are logged into Amazon DynamoDB using an Alarm Logger Lambda.
+
+---
+
+## Websites Monitored
+
+- https://google.com
+- https://github.com
+- https://amazon.com
+
+---
+
+## AWS Services Used
+
+- AWS Lambda
+- AWS CDK
+- AWS CloudFormation
+- AWS IAM
+- Amazon CloudWatch
+- Amazon EventBridge
+- Amazon SNS
+- Amazon DynamoDB
+
+---
+
+# Architecture
+
+## Web Health Monitoring Flow
+
+```text
+EventBridge Schedule
+        |
+        v
+Web Health Lambda
+        |
+        v
+Website Health Checks
+        |
+        v
+Availability + Latency Metrics
+        |
+        v
+Amazon CloudWatch
+        |
+        +----------------------+
+        |                      |
+        v                      v
+CloudWatch Dashboard     CloudWatch Alarms
+                               |
+                    +----------+----------+
+                    |                     |
+                    v                     v
+                   SNS              EventBridge
+                    |                     |
+                    v                     v
+             Email Notification    Alarm Logger Lambda
+                                          |
+                                          v
+                                      DynamoDB
 ```
 
 ---
@@ -106,6 +179,15 @@ Condition:
 Latency > 1000 milliseconds
 ```
 
+Configuration:
+
+```text
+Statistic: Average
+Period: 30 minutes
+Datapoints to Alarm: 1 out of 1
+Missing Data: Missing
+```
+
 If latency exceeds 1000 milliseconds, the alarm can enter the `ALARM` state.
 
 ## Alarm States
@@ -140,7 +222,7 @@ CloudWatch Alarm
 Email Notification
 ```
 
-The email subscription was confirmed using the student email account.
+The SNS email subscription was confirmed using the student email account.
 
 ---
 
@@ -292,16 +374,32 @@ Completed items:
 
 Week 3 focused on creating the website health monitoring solution.
 
-Completed work:
+## Completed Work
 
 - Created the Web Health Lambda
 - Monitored Google, GitHub, and Amazon
-- Collected availability metrics
-- Collected latency metrics
+- Collected website availability
+- Collected website latency
 - Published custom metrics to CloudWatch
-- Created the CloudWatch Dashboard
+- Added IAM permission for CloudWatch metrics
+- Created a CloudWatch Dashboard
+- Added Availability and Latency graphs
 - Configured EventBridge scheduling
+- Scheduled the Lambda every 30 minutes
 - Deployed infrastructure using AWS CDK
+
+## Learning Outcomes
+
+During Week 3 I learned how to:
+
+- Monitor websites using AWS Lambda
+- Measure website availability
+- Measure website latency
+- Publish custom CloudWatch metrics
+- Configure IAM permissions
+- Create a CloudWatch Dashboard
+- Schedule Lambda execution using EventBridge
+- Deploy infrastructure using AWS CDK
 
 ---
 
@@ -309,14 +407,27 @@ Completed work:
 
 Week 4 focused on monitoring thresholds and alerting.
 
-Completed work:
+## Completed Work
 
 - Created three Availability alarms
 - Created three Latency alarms
 - Configured availability threshold `< 1`
 - Configured latency threshold `> 1000 ms`
 - Configured 30-minute evaluation periods
+- Configured missing-data treatment
 - Verified CloudWatch alarm states
+
+## Learning Outcomes
+
+During Week 4 I learned how to:
+
+- Create CloudWatch alarms
+- Configure alarm thresholds
+- Configure evaluation periods
+- Monitor availability
+- Monitor latency
+- Understand `OK`, `ALARM`, and `INSUFFICIENT_DATA` states
+- Use CloudWatch alarms with custom metrics
 
 ---
 
@@ -324,30 +435,35 @@ Completed work:
 
 Week 5 focused on documentation and project organisation.
 
-Completed work:
+## Completed Work
 
 - Documented the monitoring solution
 - Created `RUNBOOK.md`
 - Created the GitHub Project dashboard
 - Added completed project tasks
-- Organised monitoring and troubleshooting procedures
+- Organised monitoring procedures
+- Organised troubleshooting procedures
+- Linked project work to GitHub
 
 ---
 
 # Week 6 - SNS and Alarm Logging
 
-Week 6 focused on notification and persistent alarm logging.
+Week 6 focused on notifications and persistent alarm logging.
 
-Completed work:
+## Completed Work
 
 - Created the SNS alarm topic
-- Configured email notifications
+- Configured alarm email notifications
 - Confirmed the SNS email subscription
+- Connected CloudWatch alarms to SNS
 - Created the DynamoDB alarm log table
 - Created the Alarm Logger Lambda
 - Created the EventBridge alarm state-change rule
-- Connected EventBridge to the Alarm Logger
-- Tested DynamoDB alarm logging successfully
+- Connected EventBridge to the Alarm Logger Lambda
+- Granted the Lambda permission to write to DynamoDB
+- Tested the Alarm Logger Lambda
+- Verified alarm data in DynamoDB
 
 ---
 
@@ -355,12 +471,14 @@ Completed work:
 
 Week 7 introduced no new project components.
 
-The focus was on completing and verifying all previous project requirements.
+The focus was on completing, reviewing, and verifying all previous project requirements.
 
-Completed checks:
+## Completed Checks
 
 - Web Health Lambda verified
-- Availability and Latency metrics verified
+- Availability metrics verified
+- Latency metrics verified
+- CloudWatch custom metrics verified
 - CloudWatch Dashboard verified
 - CloudWatch alarms verified
 - SNS email notifications verified
@@ -440,11 +558,15 @@ hello-lambda-cdk/
 
 ## Build
 
+Compile the TypeScript project:
+
 ```bash
 npm run build
 ```
 
 ## Synthesize CloudFormation
+
+Generate the CloudFormation template:
 
 ```bash
 npx cdk synth
@@ -452,15 +574,98 @@ npx cdk synth
 
 ## Check Infrastructure Changes
 
+Compare the local CDK code with the deployed infrastructure:
+
 ```bash
 npx cdk diff
 ```
 
 ## Deploy
 
+Deploy the infrastructure:
+
 ```bash
 npx cdk deploy
 ```
+
+---
+
+# Testing
+
+## Test Web Health Lambda
+
+The Web Health Lambda checks:
+
+```text
+https://google.com
+https://github.com
+https://amazon.com
+```
+
+Example result:
+
+```json
+{
+  "website": "https://google.com",
+  "status": 200,
+  "availability": 1,
+  "latency_ms": 120.5
+}
+```
+
+## Test Alarm Logger Lambda
+
+The Alarm Logger was tested with a simulated CloudWatch alarm event.
+
+Example successful response:
+
+```json
+{
+  "statusCode": 200,
+  "message": "Alarm state change logged"
+}
+```
+
+The DynamoDB table was then checked to confirm the alarm record was stored.
+
+---
+
+# Infrastructure as Code
+
+The AWS infrastructure is defined using AWS CDK.
+
+The CDK stack creates and configures components including:
+
+- Lambda functions
+- IAM permissions
+- EventBridge rules
+- CloudWatch metrics
+- CloudWatch dashboard
+- CloudWatch alarms
+- SNS topic
+- SNS email subscription
+- DynamoDB table
+- Alarm logging integration
+
+Using Infrastructure as Code makes the environment repeatable and easier to manage.
+
+---
+
+# Monitoring and Telemetry
+
+The project uses telemetry to understand the health and performance of monitored websites.
+
+Telemetry includes:
+
+- Website availability
+- Website latency
+- CloudWatch metrics
+- CloudWatch dashboards
+- CloudWatch alarms
+- SNS notifications
+- DynamoDB alarm history
+
+This helps identify problems and provides operational feedback about the monitored services.
 
 ---
 
@@ -472,7 +677,7 @@ Check repository status:
 git status
 ```
 
-Stage changes:
+Stage README changes:
 
 ```bash
 git add README.md
@@ -481,10 +686,10 @@ git add README.md
 Commit changes:
 
 ```bash
-git commit -m "Complete Week 7 README documentation"
+git commit -m "Finalize Week 7 README"
 ```
 
-Push to GitHub:
+Push changes:
 
 ```bash
 git push origin main
@@ -511,4 +716,44 @@ The completed project includes:
 - README documentation
 - GitHub Project dashboard
 
-This project demonstrates Infrastructure as Code, automated monitoring, telemetry, alerting, notification, persistent alarm logging, operational documentation, and project management using AWS and GitHub.
+---
+
+# Final Monitoring Flow
+
+```text
+Websites
+   |
+   v
+Web Health Lambda
+   |
+   v
+CloudWatch Metrics
+   |
+   +-----------------------+
+   |                       |
+   v                       v
+Dashboard               Alarms
+                           |
+             +-------------+-------------+
+             |                           |
+             v                           v
+            SNS                    EventBridge
+             |                           |
+             v                           v
+      Email Notification         Alarm Logger Lambda
+                                         |
+                                         v
+                                      DynamoDB
+```
+
+---
+
+# Conclusion
+
+The WSU2026 DevOps Web Health Monitor provides automated monitoring for Google, GitHub, and Amazon.
+
+The project collects availability and latency telemetry, publishes metrics to CloudWatch, displays them on a dashboard, evaluates alarm thresholds, sends SNS email notifications, and records alarm state changes in DynamoDB.
+
+AWS CDK is used to manage the infrastructure as code, while GitHub is used for source control, documentation, and project tracking.
+
+The completed project demonstrates Infrastructure as Code, automated monitoring, telemetry, alerting, notification, persistent alarm logging, operational documentation, and GitHub project management.
