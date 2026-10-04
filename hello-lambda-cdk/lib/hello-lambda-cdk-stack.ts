@@ -10,9 +10,26 @@ import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 
+export interface HelloLambdaCdkStackProps extends cdk.StackProps {
+  environmentName?: string;
+}
+
 export class HelloLambdaCdkStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(
+    scope: Construct,
+    id: string,
+    props?: HelloLambdaCdkStackProps
+  ) {
     super(scope, id, props);
+
+const environmentName = props?.environmentName;
+const resourcePrefix = environmentName
+  ? `WSU2026-${environmentName}`
+  : 'WSU2026';
+
+const alarmPrefix = environmentName
+  ? `${environmentName}-`
+  : '';
 
     // ------------------------------------------------------------
     // Lambda Function
@@ -116,7 +133,7 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       this,
       'WebHealthDashboard',
       {
-        dashboardName: 'WSU2026-WebHealth-Dashboard-CDK',
+  dashboardName: `${resourcePrefix}-WebHealth-Dashboard-CDK`,
       }
     );
 
@@ -152,8 +169,8 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       this,
       'WebHealthAlarmTopic',
       {
-        topicName: 'WSU2026-WebHealth-Alarms',
-        displayName: 'WSU2026 Web Health Alarm Notifications',
+topicName: `${resourcePrefix}-WebHealth-Alarms`,
+displayName: `${resourcePrefix} Web Health Alarm Notifications`,
       }
     );
 
@@ -170,7 +187,7 @@ const alarmLogTable = new dynamodb.Table(
   this,
   'WebHealthAlarmLogTable',
   {
-    tableName: 'WSU2026-WebHealth-AlarmLogs',
+tableName: `${resourcePrefix}-WebHealth-AlarmLogs`,
 
     partitionKey: {
       name: 'alarmId',
@@ -245,7 +262,7 @@ alarmStateChangeRule.addTarget(
             cloudwatch.TreatMissingData.MISSING,
 
           alarmName:
-            `${website.name}-Availability-Alarm-CDK`,
+  `${alarmPrefix}${website.name}-Availability-Alarm-CDK`,
 
           alarmDescription:
             `Alarm when ${website.name} availability falls below 1`,
@@ -282,8 +299,8 @@ alarmStateChangeRule.addTarget(
           treatMissingData:
             cloudwatch.TreatMissingData.MISSING,
 
-          alarmName:
-            `${website.name}-Latency-Alarm-CDK`,
+alarmName:
+  `${alarmPrefix}${website.name}-Latency-Alarm-CDK`,
 
           alarmDescription:
             `Alarm when ${website.name} latency exceeds 1000 milliseconds`,
