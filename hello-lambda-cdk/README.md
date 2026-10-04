@@ -746,14 +746,330 @@ Dashboard               Alarms
                                       DynamoDB
 ```
 
+# Week 9 - Multi-Stage CI/CD Pipeline
+
+Week 9 focused on implementing a multi-stage CI/CD pipeline for the Web Health Monitoring application using AWS CDK, AWS CodePipeline, and AWS CodeBuild.
+
+## CI/CD Pipeline
+
+Pipeline name:
+
+```text
+WSU2026-WebHealth-Pipeline
+```
+
+Region:
+
+```text
+Asia Pacific (Sydney)
+ap-southeast-2
+```
+
+The CI/CD pipeline automatically retrieves the project source code from GitHub, builds and tests the application, synthesizes the AWS CDK infrastructure, and deploys the application through BetaGamma and Production environments.
+
+---
+
+## Pipeline Flow
+
+```text
+GitHub
+   |
+   v
+Source
+   |
+   v
+Build / Test / Synth
+   |
+   v
+UpdatePipeline
+(Self-Mutation)
+   |
+   v
+Assets
+   |
+   v
+BetaGamma
+   |
+   v
+Manual Approval
+   |
+   v
+Prod
+```
+
+---
+
+## Pipeline Stages
+
+### Source
+
+The Source stage retrieves the latest project code from GitHub.
+
+Repository:
+
+```text
+Phalrithireach/WSU2026
+```
+
+Branch:
+
+```text
+main
+```
+
+The GitHub repository is connected to AWS CodePipeline so that source code changes can trigger the CI/CD process.
+
+---
+
+### Build
+
+AWS CodeBuild automatically builds, tests, and synthesizes the AWS CDK application.
+
+The build process includes:
+
+```text
+npm install
+npm run build
+npm test
+npx cdk synth
+```
+
+The infrastructure unit test verifies that the required AWS resources can be created correctly.
+
+---
+
+### UpdatePipeline
+
+The UpdatePipeline stage uses AWS CDK self-mutation.
+
+Self-mutation allows changes made to the pipeline infrastructure code to automatically update the AWS CodePipeline configuration.
+
+This means changes to the pipeline itself can be managed using Infrastructure as Code.
+
+---
+
+### Assets
+
+The Assets stage prepares and publishes the Lambda deployment packages required by the application.
+
+The assets include:
+
+```text
+HelloLambdaFunction_Code
+AlarmLoggerFunction_Code
+```
+
+These Lambda assets are prepared before deployment to the application environments.
+
+---
+
+### BetaGamma
+
+The application is first deployed to the BetaGamma environment.
+
+This environment is used before Production so that the deployment can be verified before releasing changes to the Production environment.
+
+The BetaGamma deployment completed successfully.
+
+---
+
+### Manual Production Approval
+
+Before the application can be deployed to Production, the pipeline requires manual approval.
+
+Approval action:
+
+```text
+ApproveProductionDeployment
+```
+
+The pipeline stops at this stage until the deployment is manually approved.
+
+This prevents application changes from automatically reaching Production without review.
+
+---
+
+### Production
+
+After the manual approval is completed, the pipeline continues to the Production environment.
+
+The Production stage performs:
+
+```text
+WebHealthStack.Prepare
+WebHealthStack.Deploy
+```
+
+The Production deployment completed successfully.
+
+---
+
+## Deployment Environments
+
+The pipeline contains two application deployment environments:
+
+```text
+BetaGamma
+Prod
+```
+
+AWS CDK stages are used to separate the environments.
+
+Environment-specific resource names are used to prevent resource naming conflicts between BetaGamma and Production.
+
+---
+
+## Week 9 Files
+
+The following project files are used for the Week 9 CI/CD pipeline:
+
+```text
+bin/hello-lambda-cdk.ts
+lib/hello-lambda-cdk-stack.ts
+lib/web-health-stage.ts
+lib/pipeline-stack.ts
+test/hello-lambda-cdk.test.ts
+```
+
+### pipeline-stack.ts
+
+Defines the AWS CodePipeline configuration, including:
+
+- GitHub source
+- CodeBuild
+- CDK synthesis
+- Self-mutation
+- BetaGamma deployment
+- Manual Production approval
+- Production deployment
+
+### web-health-stage.ts
+
+Defines a reusable AWS CDK Stage for deploying the Web Health Monitoring stack into different environments.
+
+### hello-lambda-cdk-stack.ts
+
+Defines the main Web Health Monitoring infrastructure, including:
+
+- Web Health Lambda
+- CloudWatch metrics
+- CloudWatch Dashboard
+- CloudWatch alarms
+- SNS notifications
+- DynamoDB alarm logging
+- Alarm Logger Lambda
+- EventBridge rules
+
+### hello-lambda-cdk.test.ts
+
+Contains infrastructure unit tests used during the CI/CD build process.
+
+---
+
+## Week 9 Verification
+
+The following checks were completed successfully:
+
+- AWS CDK TypeScript build passed
+- Infrastructure unit test passed
+- AWS CDK synthesis completed successfully
+- PipelineStack deployed successfully
+- GitHub Source stage succeeded
+- AWS CodeBuild stage succeeded
+- CDK self-mutation succeeded
+- Lambda assets were published successfully
+- BetaGamma Prepare succeeded
+- BetaGamma Deploy succeeded
+- Manual Production approval succeeded
+- Production Prepare succeeded
+- Production Deploy succeeded
+
+The complete CI/CD pipeline successfully deployed the Web Health Monitoring application from GitHub through BetaGamma and into Production.
+
+---
+
+## Week 9 Tasks Completed
+
+- Created a multi-stage CI/CD pipeline using AWS CDK
+- Created the PipelineStack
+- Integrated GitHub with AWS CodePipeline
+- Added automated build and testing
+- Added AWS CDK synthesis
+- Added infrastructure unit testing
+- Configured CDK self-mutation
+- Configured Lambda asset publishing
+- Created the BetaGamma deployment environment
+- Created the Production deployment environment
+- Added a manual approval gate before Production
+- Successfully deployed the application to BetaGamma
+- Successfully approved the Production deployment
+- Successfully deployed the application to Production
+
+---
+
+## Week 9 Learning Outcomes
+
+During Week 9 I learned how to:
+
+- Understand Continuous Integration and Continuous Deployment
+- Create CI/CD pipelines using AWS CodePipeline
+- Integrate GitHub with AWS CodePipeline
+- Use AWS CodeBuild for automated builds and tests
+- Use AWS CDK Pipelines
+- Use Infrastructure as Code for CI/CD
+- Create multiple deployment environments
+- Use CDK self-mutation
+- Publish Lambda deployment assets
+- Deploy infrastructure to BetaGamma before Production
+- Configure manual Production approval
+- Deploy infrastructure automatically through a CI/CD pipeline
+
+---
+
+# Final CI/CD Pipeline
+
+```text
+GitHub Repository
+        |
+        v
+      Source
+        |
+        v
+ Build / Test / Synth
+        |
+        v
+  UpdatePipeline
+  (Self-Mutation)
+        |
+        v
+      Assets
+        |
+        v
+    BetaGamma
+        |
+        v
+ Manual Approval
+        |
+        v
+       Prod
+```
+
 ---
 
 # Conclusion
 
 The WSU2026 DevOps Web Health Monitor provides automated monitoring for Google, GitHub, and Amazon.
 
-The project collects availability and latency telemetry, publishes metrics to CloudWatch, displays them on a dashboard, evaluates alarm thresholds, sends SNS email notifications, and records alarm state changes in DynamoDB.
+The project collects availability and latency telemetry, publishes metrics to Amazon CloudWatch, displays the metrics on a CloudWatch Dashboard, evaluates alarm thresholds, sends SNS email notifications, and records CloudWatch alarm state changes in Amazon DynamoDB.
+
+Amazon EventBridge automatically runs the Web Health Lambda every 30 minutes. CloudWatch alarms monitor website availability and latency, while SNS provides email notifications when alarm thresholds are breached.
+
+An Alarm Logger Lambda receives CloudWatch alarm state-change events through EventBridge and stores the alarm name, state, reason, and timestamp in DynamoDB.
 
 AWS CDK is used to manage the infrastructure as code, while GitHub is used for source control, documentation, and project tracking.
 
-The completed project demonstrates Infrastructure as Code, automated monitoring, telemetry, alerting, notification, persistent alarm logging, operational documentation, and GitHub project management.
+A multi-stage CI/CD pipeline was implemented using AWS CodePipeline and AWS CodeBuild. The pipeline automatically retrieves the source code from GitHub, builds and tests the application, synthesizes the AWS CDK infrastructure, publishes the deployment assets, and deploys the application first to the BetaGamma environment.
+
+Before Production deployment, the pipeline requires manual approval. After approval, the Web Health Monitoring infrastructure is automatically deployed to the Production environment.
+
+The completed project demonstrates Infrastructure as Code, automated monitoring, telemetry, alerting, notification, persistent alarm logging, automated testing, CI/CD automation, multi-stage deployment, environment separation, production approval controls, operational documentation, and GitHub project management.
