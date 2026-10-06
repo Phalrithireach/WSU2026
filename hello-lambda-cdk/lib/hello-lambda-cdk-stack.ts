@@ -9,6 +9,7 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 
 export interface HelloLambdaCdkStackProps extends cdk.StackProps {
   environmentName?: string;
@@ -45,7 +46,145 @@ const alarmPrefix = environmentName
         code: lambda.Code.fromAsset('lambda'),
       }
     );
+// ------------------------------------------------------------
+// Week 11 - Production Lambda Alias for Canary Deployment
+// ------------------------------------------------------------
 
+let monitorTarget: lambda.IFunction = websiteMonitor;
+let prodAlias: lambda.Alias | undefined;
+
+if (environmentName === 'Prod') {
+  prodAlias = new lambda.Alias(
+    this,
+    'ProdAlias',
+    {
+      aliasName: 'live',
+      version: websiteMonitor.currentVersion,
+    }
+  );
+
+  monitorTarget = prodAlias;
+}
+// ------------------------------------------------------------
+// Week 11 - Operational CloudWatch Metrics and Alarms
+// ------------------------------------------------------------
+
+let prodErrorAlarm: cloudwatch.Alarm | undefined;
+let prodDurationAlarm: cloudwatch.Alarm | undefined;
+let prodInvocationAlarm: cloudwatch.Alarm | undefined;
+
+if (environmentName === 'Prod' && prodAlias) {
+
+  // Lambda invocation count
+  const invocationMetric = prodAlias.metricInvocations({
+    period: cdk.Duration.minutes(5),
+    statistic: 'Sum',
+  });
+
+  // Lambda execution duration
+  const durationMetric = prodAlias.metricDuration({
+    period: cdk.Duration.minutes(5),
+    statistic: 'Average',
+  });
+
+  // Lambda execution errors
+  const errorMetric = prodAlias.metricErrors({
+    period: cdk.Duration.minutes(5),
+    statistic: 'Sum',
+  });
+
+  // Alarm if there are no invocations for 1 hour
+  prodInvocationAlarm = new cloudwatch.Alarm(
+    this,
+    'ProdInvocationAlarm',
+    {
+      alarmName: 'Prod-WebHealth-No-Invocations',
+      metric: invocationMetric,
+      threshold: 1,
+      evaluationPeriods: 12,
+      datapointsToAlarm: 12,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+      treatMissingData:
+        cloudwatch.TreatMissingData.BREACHING,
+      alarmDescription:
+        'Alarm when the Production Lambda receives no invocations for one hour',
+    }
+  );
+
+  // Alarm when average processing time exceeds 10 seconds
+  prodDurationAlarm = new cloudwatch.Alarm(
+    this,
+    'ProdDurationAlarm',
+    {
+      alarmName: 'Prod-WebHealth-High-Duration',
+      metric: durationMetric,
+      threshold: 10000,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData:
+        cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription:
+        'Alarm when Production Lambda average duration exceeds 10 seconds',
+    }
+  );
+
+  // Alarm if the Lambda produces any execution error
+  prodErrorAlarm = new cloudwatch.Alarm(
+    this,
+    'ProdErrorAlarm',
+    {
+      alarmName: 'Prod-WebHealth-Lambda-Errors',
+      metric: errorMetric,
+      threshold: 1,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData:
+        cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription:
+        'Alarm when the Production Lambda produces an execution error',
+    }
+  );
+}
+// ------------------------------------------------------------
+// Week 11 - CodeDeploy Canary Deployment and Auto Rollback
+// ------------------------------------------------------------
+
+if (
+  environmentName === 'Prod' &&
+  prodAlias &&
+  prodErrorAlarm &&
+  prodDurationAlarm
+) {
+  new codedeploy.LambdaDeploymentGroup(
+    this,
+    'ProdCanaryDeploymentGroup',
+    {
+      alias: prodAlias,
+
+      // Send 10% of traffic to the new version,
+      // wait 5 minutes, then move the remaining 90%.
+      deploymentConfig:
+        codedeploy.LambdaDeploymentConfig.CANARY_10PERCENT_5MINUTES,
+
+      // These alarms can trigger automatic rollback.
+      alarms: [
+        prodErrorAlarm,
+        prodDurationAlarm,
+      ],
+
+      autoRollback: {
+        failedDeployment: true,
+        stoppedDeployment: true,
+        deploymentInAlarm: true,
+      },
+    }
+  );
+}
     // ------------------------------------------------------------
     // IAM Permission
     // Allow Lambda to publish custom CloudWatch metrics
