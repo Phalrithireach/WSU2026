@@ -1073,3 +1073,239 @@ A multi-stage CI/CD pipeline was implemented using AWS CodePipeline and AWS Code
 Before Production deployment, the pipeline requires manual approval. After approval, the Web Health Monitoring infrastructure is automatically deployed to the Production environment.
 
 The completed project demonstrates Infrastructure as Code, automated monitoring, telemetry, alerting, notification, persistent alarm logging, automated testing, CI/CD automation, multi-stage deployment, environment separation, production approval controls, operational documentation, and GitHub project management.
+
+---
+
+# Week 10 - Automated Testing and Pipeline Test Blockers
+
+Week 10 focused on integrating automated testing into the Web Health Monitoring CI/CD pipeline.
+
+The project uses PyTest to run unit, functional, and integration tests before deployment.
+
+## Week 10 Testing Requirements
+
+The following automated tests were implemented:
+
+```text
+10 Unit Tests
+8 Functional Tests
+2 Integration Tests
+```
+
+Total:
+
+```text
+20 Automated Tests
+```
+
+All 20 tests passed successfully.
+
+## Unit Tests
+
+Ten unit tests were created for the Web Health Lambda.
+
+The unit tests verify:
+
+- Three websites are configured
+- Google is configured
+- GitHub is configured
+- Amazon is configured
+- Lambda handler returns HTTP 200
+- Successful websites return Availability = 1
+- Successful websites return HTTP status 200
+- Failed websites return Availability = 0
+- Failed websites return error information
+- CloudWatch Availability and Latency metrics are published correctly
+
+External network and CloudWatch dependencies are mocked during unit testing.
+
+## Functional Tests
+
+Eight functional tests were created to verify the behaviour of the Web Health Lambda as a complete function.
+
+The functional tests verify:
+
+- Three website results are returned
+- All configured websites are included
+- Successful websites are marked available
+- A failed website is detected correctly
+- Failed website error details are returned
+- CloudWatch is called for every website
+- Each CloudWatch request contains Availability and Latency metrics
+- HTTP requests use the configured timeout and User-Agent
+
+## Integration Tests
+
+Two integration tests were created.
+
+The integration tests perform real HTTP checks against:
+
+```text
+https://google.com
+https://github.com
+https://amazon.com
+```
+
+The integration tests verify:
+
+- Live websites can be checked successfully
+- Website checks generate the expected CloudWatch metric data
+
+## PyTest
+
+The Python automated tests are located in:
+
+```text
+python-tests/
+├── conftest.py
+├── test_unit.py
+├── test_functional.py
+└── test_integration.py
+```
+
+Development dependencies are defined in:
+
+```text
+requirements-dev.txt
+```
+
+The test suite can be executed using:
+
+```bash
+py -m pytest python-tests -v
+```
+
+Final local test result:
+
+```text
+20 passed
+```
+
+## CI/CD Test Blockers
+
+Automated tests were added to the AWS CodePipeline as deployment blockers.
+
+The pipeline now follows this flow:
+
+```text
+GitHub
+   |
+   v
+Source
+   |
+   v
+Build / Test / Synth
+   |
+   v
+UpdatePipeline
+   |
+   v
+Assets
+   |
+   v
+UnitFunctionalTestBlocker
+   |
+   v
+BetaGamma
+   |
+   v
+IntegrationTestBlocker
+   |
+   v
+Manual Production Approval
+   |
+   v
+Prod
+```
+
+## Unit and Functional Test Blocker
+
+Pipeline action:
+
+```text
+UnitFunctionalTestBlocker
+```
+
+This action runs:
+
+```text
+10 Unit Tests
+8 Functional Tests
+```
+
+The BetaGamma environment cannot be deployed if these tests fail.
+
+The Week 10 pipeline execution successfully passed the UnitFunctionalTestBlocker before deploying to BetaGamma.
+
+## Integration Test Blocker
+
+Pipeline action:
+
+```text
+IntegrationTestBlocker
+```
+
+This action runs:
+
+```text
+2 Integration Tests
+```
+
+Production deployment cannot continue if the integration tests fail.
+
+The Week 10 pipeline execution successfully passed the IntegrationTestBlocker before the Production approval stage.
+
+## Production Approval
+
+After all automated tests passed, the pipeline stopped at:
+
+```text
+ApproveProductionDeployment
+```
+
+The Production deployment was manually approved.
+
+After approval:
+
+```text
+WebHealthStack.Prepare
+WebHealthStack.Deploy
+```
+
+completed successfully.
+
+## Week 10 Completed Work
+
+Week 10 completed the following:
+
+- Created 10 unit tests
+- Created 8 functional tests
+- Created 2 integration tests
+- Installed and configured PyTest
+- Added reusable PyTest fixtures
+- Verified all 20 tests locally
+- Added UnitFunctionalTestBlocker to AWS CodePipeline
+- Added IntegrationTestBlocker to AWS CodePipeline
+- Prevented BetaGamma deployment when unit or functional tests fail
+- Prevented Production progression when integration tests fail
+- Retained manual Production approval
+- Successfully deployed to BetaGamma
+- Successfully deployed to Production
+- Verified the complete CI/CD pipeline
+
+## Week 10 Learning Outcomes
+
+During Week 10 I learned how to:
+
+- Use PyTest for automated testing
+- Create unit tests
+- Create functional tests
+- Create integration tests
+- Mock external dependencies during testing
+- Integrate automated testing with AWS CodePipeline
+- Use automated tests as deployment blockers
+- Prevent failed builds from reaching deployment environments
+- Test before BetaGamma deployment
+- Test before Production deployment
+- Use manual approval together with automated quality gates
+- Apply continuous testing practices in a CI/CD pipeline
