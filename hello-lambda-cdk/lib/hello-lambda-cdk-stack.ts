@@ -9,7 +9,6 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
-import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 
 export interface HelloLambdaCdkStackProps extends cdk.StackProps {
   environmentName?: string;
@@ -151,7 +150,10 @@ if (environmentName === 'Prod' && prodAlias) {
   );
 }
 // ------------------------------------------------------------
-// Week 11 - CodeDeploy Canary Deployment and Auto Rollback
+// ------------------------------------------------------------
+
+// Week 11 - Automatic Rollback Without CodeDeploy
+// Free-plan compatible fallback
 // ------------------------------------------------------------
 
 if (
@@ -160,29 +162,128 @@ if (
   prodErrorAlarm &&
   prodDurationAlarm
 ) {
-  new codedeploy.LambdaDeploymentGroup(
+  const rollbackFunction = new lambda.Function(
     this,
-    'ProdCanaryDeploymentGroup',
+    'ProdRollbackFunction',
     {
-      alias: prodAlias,
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'index.lambda_handler',
+      timeout: cdk.Duration.seconds(30),
 
-      // Send 10% of traffic to the new version,
-      // wait 5 minutes, then move the remaining 90%.
-      deploymentConfig:
-        codedeploy.LambdaDeploymentConfig.CANARY_10PERCENT_5MINUTES,
+      environment: {
+        FUNCTION_NAME: websiteMonitor.functionName,
+        ALIAS_NAME: 'live',
+      },
 
-      // These alarms can trigger automatic rollback.
-      alarms: [
-        prodErrorAlarm,
-        prodDurationAlarm,
+      code: lambda.Code.fromInline(`
+import os
+import boto3
+
+lambda_client = boto3.client("lambda")
+
+
+def lambda_handler(event, context):
+    function_name = os.environ["FUNCTION_NAME"]
+    alias_name = os.environ["ALIAS_NAME"]
+
+    alarm_state = (
+        event
+        .get("detail", {})
+        .get("state", {})
+        .get("value")
+    )
+
+    if alarm_state != "ALARM":
+        return {
+            "rolled_back": False,
+            "reason": "Alarm is not in ALARM state"
+        }
+
+    alias = lambda_client.get_alias(
+        FunctionName=function_name,
+        Name=alias_name
+    )
+
+    current_version = int(alias["FunctionVersion"])
+
+    response = lambda_client.list_versions_by_function(
+        FunctionName=function_name
+    )
+
+    published_versions = sorted(
+        int(version["Version"])
+        for version in response["Versions"]
+        if version["Version"] != "$LATEST"
+    )
+
+    previous_versions = [
+        version
+        for version in published_versions
+        if version < current_version
+    ]
+
+    if not previous_versions:
+        return {
+            "rolled_back": False,
+            "reason": "No previous Lambda version exists"
+        }
+
+    previous_version = str(max(previous_versions))
+
+    lambda_client.update_alias(
+        FunctionName=function_name,
+        Name=alias_name,
+        FunctionVersion=previous_version,
+        RoutingConfig={}
+    )
+
+    return {
+        "rolled_back": True,
+        "from_version": str(current_version),
+        "to_version": previous_version
+    }
+`),
+    }
+  );
+
+  // Permission for rollback Lambda
+  rollbackFunction.addToRolePolicy(
+    new iam.PolicyStatement({
+      actions: [
+        'lambda:GetAlias',
+        'lambda:ListVersionsByFunction',
+        'lambda:UpdateAlias',
       ],
+      resources: [
+        websiteMonitor.functionArn,
+        `${websiteMonitor.functionArn}:*`,
+      ],
+    })
+  );
 
-      autoRollback: {
-        failedDeployment: true,
-        stoppedDeployment: true,
-        deploymentInAlarm: true,
+  // Trigger rollback when Production health alarms enter ALARM
+  const rollbackRule = new events.Rule(
+    this,
+    'ProdAutomaticRollbackRule',
+    {
+      eventPattern: {
+        source: ['aws.cloudwatch'],
+        detailType: ['CloudWatch Alarm State Change'],
+        detail: {
+          alarmName: [
+            prodErrorAlarm.alarmName,
+            prodDurationAlarm.alarmName,
+          ],
+          state: {
+            value: ['ALARM'],
+          },
+        },
       },
     }
+  );
+
+  rollbackRule.addTarget(
+    new targets.LambdaFunction(rollbackFunction)
   );
 }
     // ------------------------------------------------------------
