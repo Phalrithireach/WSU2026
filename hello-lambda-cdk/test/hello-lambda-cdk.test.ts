@@ -12,14 +12,42 @@ test('Web Health monitoring infrastructure is created', () => {
 
   const template = Template.fromStack(stack);
 
-  // Two Lambda functions:
+  // Three Lambda functions:
   // 1. Web Health Lambda
   // 2. Alarm Logger Lambda
-  template.resourceCountIs('AWS::Lambda::Function', 2);
+  // 3. Web Crawler CRUD Lambda
+  template.resourceCountIs('AWS::Lambda::Function', 3);
 
   // DynamoDB alarm log table
   template.hasResourceProperties('AWS::DynamoDB::Table', {
     TableName: 'WSU2026-WebHealth-AlarmLogs',
+  });
+
+  // Applied Project - DynamoDB crawler target table
+  template.hasResourceProperties('AWS::DynamoDB::Table', {
+    TableName: 'WSU2026-WebCrawler-Targets',
+  });
+
+  // Applied Project - API Gateway
+  template.hasResourceProperties('AWS::ApiGateway::RestApi', {
+    Name: 'WSU2026-WebCrawler-API',
+  });
+
+  // CRUD API methods
+  template.hasResourceProperties('AWS::ApiGateway::Method', {
+    HttpMethod: 'POST',
+  });
+
+  template.hasResourceProperties('AWS::ApiGateway::Method', {
+    HttpMethod: 'GET',
+  });
+
+  template.hasResourceProperties('AWS::ApiGateway::Method', {
+    HttpMethod: 'PUT',
+  });
+
+  template.hasResourceProperties('AWS::ApiGateway::Method', {
+    HttpMethod: 'DELETE',
   });
 
   // Six CloudWatch alarms:
