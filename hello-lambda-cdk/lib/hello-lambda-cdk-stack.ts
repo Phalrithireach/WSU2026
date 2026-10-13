@@ -9,6 +9,7 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 
 export interface HelloLambdaCdkStackProps extends cdk.StackProps {
   environmentName?: string;
@@ -30,6 +31,130 @@ const resourcePrefix = environmentName
 const alarmPrefix = environmentName
   ? `${environmentName}-`
   : '';
+
+  // ------------------------------------------------------------
+// Applied Project - Web Crawler Target List
+// DynamoDB table for CRUD API
+// ------------------------------------------------------------
+
+const targetTable = new dynamodb.Table(
+  this,
+  'WebCrawlerTargetTable',
+  {
+    tableName: `${resourcePrefix}-WebCrawler-Targets`,
+
+    partitionKey: {
+      name: 'id',
+      type: dynamodb.AttributeType.STRING,
+    },
+
+    billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+
+    removalPolicy: cdk.RemovalPolicy.DESTROY,
+  }
+);
+
+// ------------------------------------------------------------
+// Applied Project - CRUD Lambda
+// ------------------------------------------------------------
+
+const crudFunction = new lambda.Function(
+  this,
+  'WebCrawlerCrudFunction',
+  {
+    runtime: lambda.Runtime.PYTHON_3_12,
+    handler: 'crud.lambda_handler',
+    code: lambda.Code.fromAsset('lambda'),
+    timeout: cdk.Duration.seconds(30),
+
+    environment: {
+      TABLE_NAME: targetTable.tableName,
+    },
+  }
+);
+
+// Allow CRUD Lambda to read and write target records
+targetTable.grantReadWriteData(crudFunction);
+
+// ------------------------------------------------------------
+// Applied Project - API Gateway
+// ------------------------------------------------------------
+
+const crudApi = new apigateway.RestApi(
+  this,
+  'WebCrawlerCrudApi',
+  {
+    restApiName: `${resourcePrefix}-WebCrawler-API`,
+
+    description:
+      'Public CRUD API for managing Web Health crawler targets',
+
+    defaultCorsPreflightOptions: {
+      allowOrigins: apigateway.Cors.ALL_ORIGINS,
+      allowMethods: [
+        'GET',
+        'POST',
+        'PUT',
+        'DELETE',
+        'OPTIONS',
+      ],
+      allowHeaders: [
+        'Content-Type',
+      ],
+    },
+  }
+);
+
+const crudIntegration =
+  new apigateway.LambdaIntegration(crudFunction);
+
+// /targets
+const targetsResource =
+  crudApi.root.addResource('targets');
+
+// POST /targets
+targetsResource.addMethod(
+  'POST',
+  crudIntegration
+);
+
+// GET /targets
+targetsResource.addMethod(
+  'GET',
+  crudIntegration
+);
+
+// /targets/{id}
+const targetByIdResource =
+  targetsResource.addResource('{id}');
+
+// GET /targets/{id}
+targetByIdResource.addMethod(
+  'GET',
+  crudIntegration
+);
+
+// PUT /targets/{id}
+targetByIdResource.addMethod(
+  'PUT',
+  crudIntegration
+);
+
+// DELETE /targets/{id}
+targetByIdResource.addMethod(
+  'DELETE',
+  crudIntegration
+);
+
+// Display API endpoint after deployment
+new cdk.CfnOutput(
+  this,
+  'WebCrawlerCrudApiUrl',
+  {
+    value: `${crudApi.url}targets`,
+    description: 'Web Crawler CRUD API endpoint',
+  }
+);
 
     // ------------------------------------------------------------
     // Lambda Function
