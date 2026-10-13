@@ -1309,3 +1309,34 @@ During Week 10 I learned how to:
 - Test before Production deployment
 - Use manual approval together with automated quality gates
 - Apply continuous testing practices in a CI/CD pipeline
+
+# Week 11 - Operational Monitoring and Automatic Rollback
+
+Week 11 focused on operational monitoring and automatic rollback for the Production Web Health Monitoring environment.
+
+## Week 11 Completed Work
+
+The following operational monitoring features were implemented:
+
+- Production Lambda alias named `live`
+- CloudWatch operational metrics for the Production Lambda
+- Alarm for missing Lambda invocations
+- Alarm for high Lambda execution duration
+- Alarm for Lambda execution errors
+- EventBridge rule for Production alarm state changes
+- Automatic rollback Lambda function
+- Automatic rollback of the `live` alias to the previous Lambda version
+- Production deployment verified successfully through AWS CodePipeline
+
+## Production Operational Alarms
+
+The following CloudWatch alarms were created:
+
+### Prod-WebHealth-No-Invocations
+
+Detects when the Production Lambda does not receive the expected invocations.
+
+Condition:
+
+```text
+Invocations < 1
