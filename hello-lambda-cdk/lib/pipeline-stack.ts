@@ -115,6 +115,9 @@ export class PipelineStack extends cdk.Stack {
         'IntegrationTestBlocker',
         {
           input: source,
+          envFromCfnOutputs: {
+            API_TARGETS_URL: betaGammaStage.webHealthStack.crudApiUrlOutput,
+          },
 
           commands: [
             'cd hello-lambda-cdk',

@@ -1,154 +1,336 @@
-# WSU2026 DevOps Web Health Monitor
 
-## Project Overview
+# WSU2026 DevOps Web Health Monitoring Project
 
-This project uses AWS CDK and AWS Lambda to monitor the health of multiple websites.
+**Unit:** COMP2029 – DevOps (Spring 2026)  
+**University:** Western Sydney University  
+**Project:** Web Health Monitoring and Web Crawler CRUD API  
+**AWS Region:** Asia Pacific (Sydney) – `ap-southeast-2`  
+**Technology:** AWS CDK, TypeScript, Python, AWS Lambda, API Gateway, DynamoDB, CloudWatch and CodePipeline
 
-The Web Health Lambda checks each website and collects:
-
-- Website availability
-- HTTP status
-- Response latency
-
-The collected metrics are published to Amazon CloudWatch. CloudWatch dashboards display the metrics, while CloudWatch alarms monitor availability and latency thresholds.
-
-Amazon SNS is used for email notifications, and CloudWatch alarm state changes are logged into Amazon DynamoDB using an Alarm Logger Lambda.
+**GitHub Repository:** https://github.com/Phalrithireach/WSU2026
 
 ---
 
-## Websites Monitored
+## 1. Project Overview
 
-- https://google.com
-- https://github.com
-- https://amazon.com
+The WSU2026 DevOps Web Health Monitoring Project is a serverless AWS application designed to monitor website availability, measure response latency, manage crawler targets, and automate software delivery through a CI/CD pipeline.
+
+The project began as a web health monitoring application and was extended to include a public RESTful API for managing website targets stored in Amazon DynamoDB.
+
+The application supports:
+
+- Automated website availability monitoring
+- HTTP response status and latency measurement
+- CloudWatch custom metrics and dashboards
+- CloudWatch availability and latency alarms
+- EventBridge scheduling
+- SNS email notifications
+- DynamoDB alarm event logging
+- RESTful CRUD operations using API Gateway
+- DynamoDB target management
+- DynamoDB read/write performance measurement
+- Automated unit, functional and integration tests
+- Multi-stage CI/CD deployment
+- BetaGamma and Production environments
+- Manual Production deployment approval
+- Production Lambda aliases and rollback logic
+- GitHub documentation and project management
+
+AWS CDK is used to define and manage the cloud infrastructure using TypeScript.
 
 ---
 
-## AWS Services Used
+## 2. Project Objectives
 
-- AWS Lambda
-- AWS CDK
-- AWS CloudFormation
-- AWS IAM
-- Amazon CloudWatch
-- Amazon EventBridge
-- Amazon SNS
-- Amazon DynamoDB
+The main objectives are to:
+
+1. Monitor website availability automatically.
+2. Measure website response latency in milliseconds.
+3. Publish monitoring metrics to Amazon CloudWatch.
+4. Visualise website health using dashboards.
+5. Generate alerts when websites become unavailable or respond slowly.
+6. Record alarm state changes in DynamoDB.
+7. Manage website targets through a public REST API.
+8. Implement CRUD business logic using Python AWS Lambda functions.
+9. Measure DynamoDB read and write operation durations.
+10. Automate testing and deployment using CI/CD.
+11. Separate pre-production and production environments.
+12. Improve software reliability through automated verification and controlled releases.
 
 ---
 
-# Architecture
+## 3. AWS Services and Technologies
 
-## Web Health Monitoring Flow
+| Service / Technology | Purpose |
+|---|---|
+| AWS Lambda | Executes website checks, CRUD logic, alarm logging and rollback logic |
+| Amazon API Gateway | Exposes RESTful CRUD endpoints |
+| Amazon DynamoDB | Stores crawler targets and alarm event records |
+| Amazon CloudWatch | Collects metrics, displays dashboards and evaluates alarms |
+| Amazon EventBridge | Schedules website checks and routes alarm events |
+| Amazon SNS | Sends alarm notifications by email |
+| AWS IAM | Controls Lambda access to AWS resources |
+| AWS CDK | Defines infrastructure using TypeScript |
+| AWS CloudFormation | Provisions and updates cloud resources |
+| AWS CodePipeline | Orchestrates CI/CD delivery |
+| AWS CodeBuild | Executes build and automated test commands |
+| GitHub | Stores source code and project issues |
+| Python 3.12 | Implements serverless application logic |
+| TypeScript | Defines infrastructure using AWS CDK |
+| PyTest | Executes Python automated tests |
+| Jest | Executes CDK infrastructure tests |
+
+---
+
+## 4. System Architecture
+
+The application has three main components: website monitoring, crawler target management, and CI/CD delivery.
+
+### 4.1 Website Monitoring Architecture
 
 ```text
-EventBridge Schedule
-        |
-        v
+Amazon EventBridge
+   |
+   | Every 30 minutes
+   v
 Web Health Lambda
-        |
-        v
-Website Health Checks
-        |
-        v
-Availability + Latency Metrics
-        |
-        v
-Amazon CloudWatch
-        |
-        +----------------------+
-        |                      |
-        v                      v
-CloudWatch Dashboard     CloudWatch Alarms
-                               |
-                    +----------+----------+
-                    |                     |
-                    v                     v
-                   SNS              EventBridge
-                    |                     |
-                    v                     v
-             Email Notification    Alarm Logger Lambda
-                                          |
-                                          v
-                                      DynamoDB
+   |
+   +----> DynamoDB Target Table
+   |          |
+   |          v
+   |      Enabled URLs
+   |
+   v
+Website HTTP Checks
+   |
+   +----> Availability
+   +----> Response Latency
+   +----> HTTP Status
+   |
+   v
+Amazon CloudWatch Metrics
+   |
+   +----> CloudWatch Dashboard
+   |
+   +----> CloudWatch Alarms
+               |
+               +----> Amazon SNS
+               |          |
+               |          v
+               |     Email Notification
+               |
+               +----> EventBridge
+                          |
+                          v
+                     Alarm Logger
+                          |
+                          v
+                       DynamoDB
 ```
+
+The monitoring Lambda reads enabled targets from DynamoDB when target records are available.
+
+When the table is empty or cannot be read, the current implementation falls back to the original default website list.
+
+This target-selection enhancement is implemented on the project quality-review branch and requires deployment verification.
+
+### 4.2 CRUD API Architecture
+
+```text
+User / API Client
+       |
+       | HTTP Request
+       v
+Amazon API Gateway
+       |
+       v
+Web Crawler CRUD Lambda
+       |
+       | Read / Write
+       v
+Amazon DynamoDB
+       |
+       v
+Target Data / Operation Result
+       |
+       v
+API Gateway HTTP Response
+       |
+       v
+User / API Client
+```
+
+### 4.3 CI/CD Architecture
+
+```text
+GitHub Repository
+       |
+       v
+Source
+       |
+       v
+Build, Jest Test and CDK Synth
+       |
+       v
+UpdatePipeline
+       |
+       v
+Assets
+       |
+       v
+Unit and Functional Tests
+       |
+       v
+BetaGamma Deployment
+       |
+       v
+Integration Tests
+       |
+       v
+Manual Production Approval
+       |
+       v
+Production Deployment
+       |
+       v
+CloudWatch Monitoring
+```
+
+The CI/CD pipeline separates automated verification from manual Production approval.
 
 ---
 
-# CloudWatch Metrics
+## 5. Web Health Monitoring
 
-## Custom Namespace
+### 5.1 Default Websites
 
-```text
-WSU2026/WebHealth
-```
+The original monitoring configuration contains:
 
-Two custom metrics are collected for each monitored website.
+| Website | URL |
+|---|---|
+| Google | https://google.com |
+| GitHub | https://github.com |
+| Amazon | https://amazon.com |
 
-### Availability
+These websites are also the fallback monitoring targets.
 
-The Availability metric shows whether the website is reachable.
+The updated monitoring implementation supports enabled URLs loaded from the DynamoDB target table.
+
+### 5.2 Monitoring Process
+
+For each selected website, the monitoring Lambda:
+
+1. Creates an HTTP request.
+2. Sends the request using Python `urllib.request`.
+3. Measures elapsed time.
+4. Records the HTTP status or request error.
+5. Assigns an availability value.
+6. Publishes metrics to CloudWatch.
+7. Returns the monitoring results.
+
+### 5.3 Website Availability
+
+Availability indicates whether a website request completed successfully.
 
 ```text
 1 = Website available
 0 = Website unavailable
 ```
 
-### Latency
+A failed HTTP request is reported with availability `0`.
 
-The Latency metric records website response time in milliseconds.
+### 5.4 Website Latency
+
+Latency measures the time taken for a website to respond.
+
+The application records latency in milliseconds:
+
+```text
+latency_ms
+```
+
+A higher latency value indicates a slower response.
+
+### 5.5 Example Monitoring Result
+
+```json
+{
+  "website": "https://google.com",
+  "status": 200,
+  "availability": 1,
+  "latency_ms": 125.5
+}
+```
+
+The values above are illustrative. Actual response times vary with network conditions.
 
 ---
 
-# CloudWatch Dashboard
+## 6. CloudWatch Monitoring
 
-Dashboard name:
+### 6.1 Custom Metric Namespace
+
+The application publishes custom metrics under:
+
+```text
+WSU2026/WebHealth
+```
+
+The two monitoring metrics are:
+
+| Metric | Unit | Description |
+|---|---|---|
+| Availability | Count | Indicates whether a website request succeeded |
+| Latency | Milliseconds | Measures website response duration |
+
+The `Website` dimension identifies the monitored URL.
+
+### 6.2 CloudWatch Dashboard
+
+The project includes dashboards for viewing availability and latency.
+
+The original monitoring dashboard is:
 
 ```text
 WSU2026-WebHealth-Dashboard
 ```
 
-The dashboard displays:
+CDK also creates environment-specific dashboards using the resource prefix:
 
-- Availability for Google, GitHub, and Amazon
-- Latency for Google, GitHub, and Amazon
+```text
+WSU2026-BetaGamma-WebHealth-Dashboard-CDK
+WSU2026-Prod-WebHealth-Dashboard-CDK
+```
 
-This provides a central view of website health and performance.
+The CDK dashboard graphs are configured for Google, GitHub and Amazon.
 
----
+Newly added DynamoDB targets can publish metrics, but the predefined graphs are not automatically extended for each new target.
 
-# EventBridge Schedule
+### 6.3 EventBridge Schedule
 
-Amazon EventBridge automatically runs the Web Health Lambda every 30 minutes.
+Amazon EventBridge invokes the monitoring Lambda every 30 minutes.
 
 ```text
 rate(30 minutes)
 ```
 
-Flow:
+In the updated Production configuration, the scheduled invocation uses the Production `live` Lambda alias.
 
-```text
-EventBridge Schedule
-        |
-        v
-Web Health Lambda
-```
+This allows alias changes to affect subsequent scheduled executions.
 
 ---
 
-# CloudWatch Alarms
+## 7. CloudWatch Alarms
 
-Six CloudWatch alarms monitor the three websites.
+The application defines six website monitoring alarms.
 
-## Availability Alarms
+### 7.1 Availability Alarms
 
-```text
-Google-Availability-Alarm-CDK
-GitHub-Availability-Alarm-CDK
-Amazon-Availability-Alarm-CDK
-```
+- Google Availability Alarm
+- GitHub Availability Alarm
+- Amazon Availability Alarm
 
-Condition:
+Alarm condition:
 
 ```text
 Availability < 1
@@ -156,24 +338,20 @@ Availability < 1
 
 Configuration:
 
-```text
-Statistic: Average
-Period: 30 minutes
-Datapoints to Alarm: 1 out of 1
-Missing Data: Missing
-```
+| Setting | Value |
+|---|---|
+| Statistic | Average |
+| Period | 30 minutes |
+| Evaluation | 1 out of 1 datapoint |
+| Missing data | Missing |
 
-If Availability becomes `0`, the alarm can enter the `ALARM` state.
+### 7.2 Latency Alarms
 
-## Latency Alarms
+- Google Latency Alarm
+- GitHub Latency Alarm
+- Amazon Latency Alarm
 
-```text
-Google-Latency-Alarm-CDK
-GitHub-Latency-Alarm-CDK
-Amazon-Latency-Alarm-CDK
-```
-
-Condition:
+Alarm condition:
 
 ```text
 Latency > 1000 milliseconds
@@ -181,33 +359,35 @@ Latency > 1000 milliseconds
 
 Configuration:
 
-```text
-Statistic: Average
-Period: 30 minutes
-Datapoints to Alarm: 1 out of 1
-Missing Data: Missing
-```
+| Setting | Value |
+|---|---|
+| Statistic | Average |
+| Period | 30 minutes |
+| Evaluation | 1 out of 1 datapoint |
+| Missing data | Missing |
 
-If latency exceeds 1000 milliseconds, the alarm can enter the `ALARM` state.
+### 7.3 Alarm States
 
-## Alarm States
+CloudWatch alarms can report:
 
-CloudWatch alarms can have the following states:
+- `OK` – metric is within the configured threshold
+- `ALARM` – metric breaches the configured threshold
+- `INSUFFICIENT_DATA` – insufficient data is available for evaluation
 
-- `OK` - metric is within the configured threshold
-- `ALARM` - metric has crossed the configured threshold
-- `INSUFFICIENT_DATA` - CloudWatch does not have enough data to evaluate the alarm
+The website-specific alarms are predefined for the original three websites.
 
 ---
 
-# SNS Alarm Notifications
+## 8. SNS Alarm Notifications
 
-Amazon SNS is used to send email notifications when CloudWatch alarms enter the ALARM state.
+Amazon SNS provides email notifications for website alarms.
 
-SNS topic:
+The application creates an SNS topic using an environment-specific name.
+
+Example:
 
 ```text
-WSU2026-WebHealth-Alarms
+WSU2026-Prod-WebHealth-Alarms
 ```
 
 Notification flow:
@@ -216,541 +396,497 @@ Notification flow:
 CloudWatch Alarm
        |
        v
-      SNS
+Amazon SNS
        |
        v
 Email Notification
 ```
 
-The SNS email subscription was confirmed using the student email account.
+SNS email subscriptions must be confirmed by the recipient before notifications can be delivered.
 
 ---
 
-# DynamoDB Alarm Logging
+## 9. DynamoDB Alarm Logging
 
-CloudWatch alarm state changes are logged into Amazon DynamoDB.
+The project uses a separate DynamoDB table to store CloudWatch alarm state changes.
 
-DynamoDB table:
-
-```text
-WSU2026-WebHealth-AlarmLogs
-```
-
-Alarm logging flow:
+Environment-specific examples include:
 
 ```text
-CloudWatch Alarm State Change
-            |
-            v
-       EventBridge
-            |
-            v
-    Alarm Logger Lambda
-            |
-            v
-        DynamoDB
+WSU2026-BetaGamma-WebHealth-AlarmLogs
+WSU2026-Prod-WebHealth-AlarmLogs
 ```
 
-The DynamoDB table stores:
+An EventBridge rule detects CloudWatch alarm state-change events and invokes the Alarm Logger Lambda.
 
-- Alarm ID
+The alarm logging component records information including:
+
+- Alarm identifier
 - Alarm name
 - Alarm state
 - Reason
 - Timestamp
 
----
+A simulated alarm event was previously used to verify the alarm logging workflow.
 
-# Alarm Logger Lambda
-
-The Alarm Logger Lambda receives CloudWatch alarm state-change events from EventBridge.
-
-The function reads:
-
-```text
-alarmName
-state.value
-state.reason
-time
-```
-
-The information is then written into DynamoDB.
+Operational troubleshooting instructions are available in [RUNBOOK.md](RUNBOOK.md).
 
 ---
 
-# Alarm Logging Verification
+## 10. Applied Project – Web Crawler CRUD API
 
-The alarm logging solution was tested using a simulated CloudWatch alarm state-change event.
+The Applied Project extends the monitoring application with a public RESTful API for managing websites and webpages to crawl.
 
-Test event:
+The implementation uses:
+
+- Amazon API Gateway
+- Python AWS Lambda
+- Amazon DynamoDB
+- AWS CDK
+- Automated tests
+- AWS CodePipeline
+
+### 10.1 DynamoDB Target Table
+
+Crawler targets are stored in an environment-specific DynamoDB table.
+
+Examples:
 
 ```text
-Alarm Name: Week6-Test-Alarm
-State: ALARM
-Reason: Manual Week 6 DynamoDB logging test
-Timestamp: 2026-10-04T22:20:00Z
+WSU2026-BetaGamma-WebCrawler-Targets
+WSU2026-Prod-WebCrawler-Targets
 ```
 
-The Alarm Logger Lambda returned:
+Each record contains:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | String | Unique target identifier and partition key |
+| `url` | String | Website or webpage URL |
+| `enabled` | Boolean | Indicates whether the target is enabled |
+
+Example target:
 
 ```json
 {
-  "statusCode": 200,
-  "message": "Alarm state change logged"
+  "id": "google",
+  "url": "https://google.com",
+  "enabled": true
 }
 ```
 
-The DynamoDB table was then checked using the AWS CLI.
+DynamoDB uses on-demand billing with the `PAY_PER_REQUEST` configuration.
 
-The following record was successfully found:
+### 10.2 REST API Endpoints
 
-```text
-Week6-Test-Alarm
-ALARM
-Manual Week 6 DynamoDB logging test
-2026-10-04T22:20:00Z
+| Method | Endpoint | Operation |
+|---|---|---|
+| POST | `/targets` | Create a website target |
+| GET | `/targets` | Read the target list |
+| GET | `/targets/{id}` | Read an individual target |
+| PUT | `/targets/{id}` | Update an existing target |
+| DELETE | `/targets/{id}` | Delete a target |
+
+API Gateway forwards requests to the CRUD Lambda.
+
+### 10.3 Create Target
+
+```http
+POST /targets
 ```
 
-This confirmed that the Alarm Logger Lambda successfully writes CloudWatch alarm state-change information into DynamoDB.
+Example request:
 
----
-
-# Operational Runbook
-
-Operational monitoring and troubleshooting procedures are documented in:
-
-```text
-RUNBOOK.md
+```json
+{
+  "id": "example",
+  "url": "https://example.com",
+  "enabled": true
+}
 ```
 
-The runbook explains how to:
+A successful creation returns HTTP `201 Created`.
 
-- Check the CloudWatch Dashboard
-- Check CloudWatch alarms
-- Investigate website availability failures
-- Investigate high latency
-- Review Lambda errors
-- Check IAM permissions
-- Check EventBridge scheduling
-- Verify CloudWatch metrics
-- Redeploy the infrastructure
-- Escalate unresolved problems
+Creating a target with an existing identifier returns HTTP `409 Conflict`.
 
----
+### 10.4 Read All Targets
 
-# GitHub Project Dashboard
-
-GitHub Project:
-
-```text
-WSU2026 Web Health Project
+```http
+GET /targets
 ```
 
-The project dashboard tracks all completed project components.
+Returns target records from DynamoDB.
 
-Current status:
-
-```text
-Todo: 0
-In Progress: 0
-Done: 9
-```
-
-Completed items:
-
-1. Web Health Lambda
-2. Availability and Latency Metrics
-3. Publish Metrics to CloudWatch
-4. CloudWatch Dashboard
-5. CloudWatch Alarms
-6. README Documentation
-7. Runbook Documentation
-8. SNS Alarm Notifications
-9. DynamoDB Alarm Logging
-
----
-
-# Week 3 - Web Health Monitoring
-
-Week 3 focused on creating the website health monitoring solution.
-
-## Completed Work
-
-- Created the Web Health Lambda
-- Monitored Google, GitHub, and Amazon
-- Collected website availability
-- Collected website latency
-- Published custom metrics to CloudWatch
-- Added IAM permission for CloudWatch metrics
-- Created a CloudWatch Dashboard
-- Added Availability and Latency graphs
-- Configured EventBridge scheduling
-- Scheduled the Lambda every 30 minutes
-- Deployed infrastructure using AWS CDK
-
-## Learning Outcomes
-
-During Week 3 I learned how to:
-
-- Monitor websites using AWS Lambda
-- Measure website availability
-- Measure website latency
-- Publish custom CloudWatch metrics
-- Configure IAM permissions
-- Create a CloudWatch Dashboard
-- Schedule Lambda execution using EventBridge
-- Deploy infrastructure using AWS CDK
-
----
-
-# Week 4 - CloudWatch Alarms
-
-Week 4 focused on monitoring thresholds and alerting.
-
-## Completed Work
-
-- Created three Availability alarms
-- Created three Latency alarms
-- Configured availability threshold `< 1`
-- Configured latency threshold `> 1000 ms`
-- Configured 30-minute evaluation periods
-- Configured missing-data treatment
-- Verified CloudWatch alarm states
-
-## Learning Outcomes
-
-During Week 4 I learned how to:
-
-- Create CloudWatch alarms
-- Configure alarm thresholds
-- Configure evaluation periods
-- Monitor availability
-- Monitor latency
-- Understand `OK`, `ALARM`, and `INSUFFICIENT_DATA` states
-- Use CloudWatch alarms with custom metrics
-
----
-
-# Week 5 - Documentation and Project Management
-
-Week 5 focused on documentation and project organisation.
-
-## Completed Work
-
-- Documented the monitoring solution
-- Created `RUNBOOK.md`
-- Created the GitHub Project dashboard
-- Added completed project tasks
-- Organised monitoring procedures
-- Organised troubleshooting procedures
-- Linked project work to GitHub
-
----
-
-# Week 6 - SNS and Alarm Logging
-
-Week 6 focused on notifications and persistent alarm logging.
-
-## Completed Work
-
-- Created the SNS alarm topic
-- Configured alarm email notifications
-- Confirmed the SNS email subscription
-- Connected CloudWatch alarms to SNS
-- Created the DynamoDB alarm log table
-- Created the Alarm Logger Lambda
-- Created the EventBridge alarm state-change rule
-- Connected EventBridge to the Alarm Logger Lambda
-- Granted the Lambda permission to write to DynamoDB
-- Tested the Alarm Logger Lambda
-- Verified alarm data in DynamoDB
-
----
-
-# Week 7 - Project Finalisation
-
-Week 7 introduced no new project components.
-
-The focus was on completing, reviewing, and verifying all previous project requirements.
-
-## Completed Checks
-
-- Web Health Lambda verified
-- Availability metrics verified
-- Latency metrics verified
-- CloudWatch custom metrics verified
-- CloudWatch Dashboard verified
-- CloudWatch alarms verified
-- SNS email notifications verified
-- DynamoDB alarm logging verified
-- README finalised
-- Runbook finalised
-- GitHub Project dashboard completed
-
----
-
-# Final Project Architecture
+The response includes:
 
 ```text
-                    EventBridge Schedule
-                            |
-                            v
-                    Web Health Lambda
-                            |
-                            v
-                 Google / GitHub / Amazon
-                            |
-                            v
-              Availability + Latency Metrics
-                            |
-                            v
-                     Amazon CloudWatch
-                            |
-                +-----------+-----------+
-                |                       |
-                v                       v
-       CloudWatch Dashboard      CloudWatch Alarms
-                                        |
-                              +---------+---------+
-                              |                   |
-                              v                   v
-                             SNS             EventBridge
-                              |                   |
-                              v                   v
-                     Email Notification   Alarm Logger Lambda
-                                                  |
-                                                  v
-                                               DynamoDB
+count
+items
+dynamodb_read_ms
 ```
+
+### 10.5 Read Individual Target
+
+```http
+GET /targets/{id}
+```
+
+Example:
+
+```http
+GET /targets/example
+```
+
+A successful request returns the selected target record.
+
+A missing target returns HTTP `404 Not Found`.
+
+### 10.6 Update Target
+
+```http
+PUT /targets/{id}
+```
+
+Example request:
+
+```json
+{
+  "url": "https://www.example.com",
+  "enabled": false
+}
+```
+
+The API can update the target URL, enabled state, or both.
+
+The reviewed implementation uses a DynamoDB condition to prevent updates from accidentally creating missing records.
+
+A missing target returns HTTP `404 Not Found`.
+
+### 10.7 Delete Target
+
+```http
+DELETE /targets/{id}
+```
+
+The API deletes the selected DynamoDB record.
+
+A successful deletion returns HTTP `200 OK`.
+
+A missing record returns HTTP `404 Not Found`.
+
+### 10.8 CRUD HTTP Response Codes
+
+| Code | Meaning |
+|---|---|
+| 200 | Successful read, update or delete |
+| 201 | Target created |
+| 400 | Invalid or missing required input |
+| 404 | Target not found |
+| 405 | Unsupported HTTP method |
+| 409 | Target already exists |
+| 500 | Internal server error |
+
+Complete API request and response examples are available in [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 
 ---
 
-# Project Structure
+## 11. DynamoDB Performance Measurement
+
+The CRUD Lambda uses Python's `time.perf_counter()` to measure operation duration.
+
+### 11.1 Read Performance
+
+Read operations return:
 
 ```text
-hello-lambda-cdk/
-│
-├── alarm-logger/
-│   └── index.py
-│
-├── lambda/
-│   └── index.py
-│
-├── bin/
-│   └── hello-lambda-cdk.ts
-│
-├── lib/
-│   └── hello-lambda-cdk-stack.ts
-│
-├── test/
-│   └── hello-lambda-cdk.test.ts
-│
-├── README.md
-├── RUNBOOK.md
-├── cdk.json
-├── package.json
-└── tsconfig.json
+dynamodb_read_ms
 ```
+
+### 11.2 Write Performance
+
+Create, update and delete operations return:
+
+```text
+dynamodb_write_ms
+```
+
+Example:
+
+```json
+{
+  "message": "Target created",
+  "item": {
+    "id": "example",
+    "url": "https://example.com",
+    "enabled": true
+  },
+  "dynamodb_write_ms": 25.4
+}
+```
+
+The reported durations are observations from individual operations, not guaranteed performance thresholds.
 
 ---
 
-# Build and Deployment
+## 12. API Testing with PowerShell
 
-## Build
+The following examples demonstrate how to interact with the deployed API.
 
-Compile the TypeScript project:
+Use the appropriate environment URL obtained from AWS CloudFormation.
 
-```bash
+### 12.1 Configure API URL
+
+```powershell
+$baseUrl = "https://YOUR-API-ID.execute-api.ap-southeast-2.amazonaws.com/prod"
+```
+
+For the BetaGamma environment, obtain the correct endpoint from:
+
+```text
+AWS CloudFormation
+  -> BetaGamma-WebHealthStack
+  -> Outputs
+  -> WebCrawlerCrudApiUrl
+```
+
+The API Gateway path segment `/prod` is the gateway stage name and does not necessarily indicate the application's Production environment.
+
+### 12.2 Create a Target
+
+```powershell
+$body = @{
+    id = "demo-example"
+    url = "https://example.com"
+    enabled = $true
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Uri "$baseUrl/targets" `
+    -Method POST `
+    -ContentType "application/json" `
+    -Body $body
+```
+
+### 12.3 Read All Targets
+
+```powershell
+Invoke-RestMethod `
+    -Uri "$baseUrl/targets" `
+    -Method GET
+```
+
+### 12.4 Read One Target
+
+```powershell
+Invoke-RestMethod `
+    -Uri "$baseUrl/targets/demo-example" `
+    -Method GET
+```
+
+### 12.5 Update a Target
+
+```powershell
+$updateBody = @{
+    url = "https://www.example.com"
+    enabled = $false
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Uri "$baseUrl/targets/demo-example" `
+    -Method PUT `
+    -ContentType "application/json" `
+    -Body $updateBody
+```
+
+### 12.6 Delete a Target
+
+```powershell
+Invoke-RestMethod `
+    -Uri "$baseUrl/targets/demo-example" `
+    -Method DELETE
+```
+
+These examples should be run against an authorised test environment.
+
+---
+
+## 13. Automated Testing
+
+The application uses Jest for CDK infrastructure tests and PyTest for Python functionality.
+
+### 13.1 Unit Tests
+
+Located in:
+
+```text
+python-tests/test_unit.py
+```
+
+The unit tests cover:
+
+- Website configuration
+- Lambda response handling
+- Successful and failed website requests
+- Availability and latency values
+- CloudWatch metric publishing
+- CRUD target creation
+- CRUD target retrieval
+- DynamoDB-backed target selection
+- Fallback target behaviour
+- Missing-target update handling
+
+External dependencies are mocked where appropriate.
+
+### 13.2 Functional Tests
+
+Located in:
+
+```text
+python-tests/test_functional.py
+```
+
+The functional tests cover:
+
+- Monitoring result structure
+- Website availability and failure scenarios
+- CloudWatch publishing behaviour
+- HTTP request parameters
+- CRUD create-and-read workflow
+- DynamoDB timing information
+
+### 13.3 Integration Tests
+
+Located in:
+
+```text
+python-tests/test_integration.py
+```
+
+The integration tests cover:
+
+- Website HTTP requests
+- Monitoring results and metric publishing behaviour
+- Deployed API Gateway CRUD operations
+- DynamoDB create, read, update and delete operations
+- DynamoDB timing response fields
+
+The CRUD integration test uses an environment-supplied API URL.
+
+The API test creates a temporary target and removes it during cleanup.
+
+The first two integration tests execute the monitoring handler locally with test fixtures; the CRUD integration test calls the deployed API.
+
+### 13.4 Latest Verified Test Results
+
+The latest locally verified results are:
+
+| Test category | Number passed |
+|---|---:|
+| Python unit tests | 15 |
+| Python functional tests | 9 |
+| Python integration tests | 3 |
+| **Total Python tests** | **27** |
+| Jest CDK infrastructure tests | 1 |
+
+Latest Python test result:
+
+```text
+27 passed in 4.50s
+```
+
+The unit and functional test group produced:
+
+```text
+24 passed
+```
+
+The CDK infrastructure test produced:
+
+```text
+Test Suites: 1 passed, 1 total
+Tests:       1 passed, 1 total
+```
+
+These are development verification results. The updated deployment requires separate AWS verification.
+
+---
+
+## 14. Running Tests Locally
+
+### 14.1 Install Dependencies
+
+Run from the `hello-lambda-cdk` directory:
+
+```powershell
+npm ci
+py -m pip install -r requirements-dev.txt
+```
+
+Use a supported Node.js version compatible with the installed AWS CDK dependencies. Node.js 20 or newer is required by the project dependencies.
+
+### 14.2 Build TypeScript
+
+```powershell
 npm run build
 ```
 
-## Synthesize CloudFormation
+### 14.3 Run CDK Infrastructure Tests
 
-Generate the CloudFormation template:
+```powershell
+npm test
+```
 
-```bash
+### 14.4 Run Python Unit Tests
+
+```powershell
+py -m pytest python-tests/test_unit.py -v
+```
+
+### 14.5 Run Python Functional Tests
+
+```powershell
+py -m pytest python-tests/test_functional.py -v
+```
+
+### 14.6 Run Python Integration Tests
+
+First configure the endpoint for the intended test environment:
+
+```powershell
+$env:API_TARGETS_URL = "https://YOUR-API-ID.execute-api.ap-southeast-2.amazonaws.com/prod/targets"
+```
+
+Then run:
+
+```powershell
+py -m pytest python-tests/test_integration.py -v
+```
+
+### 14.7 Run All Python Tests
+
+```powershell
+py -m pytest python-tests -v
+```
+
+### 14.8 Synthesize Infrastructure
+
+```powershell
 npx cdk synth
 ```
 
-## Check Infrastructure Changes
+### 14.9 Inspect Infrastructure Changes
 
-Compare the local CDK code with the deployed infrastructure:
-
-```bash
+```powershell
 npx cdk diff
 ```
 
-## Deploy
-
-Deploy the infrastructure:
-
-```bash
-npx cdk deploy
-```
+These validation commands do not deploy changes.
 
 ---
 
-# Testing
+## 15. CI/CD Pipeline
 
-## Test Web Health Lambda
-
-The Web Health Lambda checks:
-
-```text
-https://google.com
-https://github.com
-https://amazon.com
-```
-
-Example result:
-
-```json
-{
-  "website": "https://google.com",
-  "status": 200,
-  "availability": 1,
-  "latency_ms": 120.5
-}
-```
-
-## Test Alarm Logger Lambda
-
-The Alarm Logger was tested with a simulated CloudWatch alarm event.
-
-Example successful response:
-
-```json
-{
-  "statusCode": 200,
-  "message": "Alarm state change logged"
-}
-```
-
-The DynamoDB table was then checked to confirm the alarm record was stored.
-
----
-
-# Infrastructure as Code
-
-The AWS infrastructure is defined using AWS CDK.
-
-The CDK stack creates and configures components including:
-
-- Lambda functions
-- IAM permissions
-- EventBridge rules
-- CloudWatch metrics
-- CloudWatch dashboard
-- CloudWatch alarms
-- SNS topic
-- SNS email subscription
-- DynamoDB table
-- Alarm logging integration
-
-Using Infrastructure as Code makes the environment repeatable and easier to manage.
-
----
-
-# Monitoring and Telemetry
-
-The project uses telemetry to understand the health and performance of monitored websites.
-
-Telemetry includes:
-
-- Website availability
-- Website latency
-- CloudWatch metrics
-- CloudWatch dashboards
-- CloudWatch alarms
-- SNS notifications
-- DynamoDB alarm history
-
-This helps identify problems and provides operational feedback about the monitored services.
-
----
-
-# Git Commands
-
-Check repository status:
-
-```bash
-git status
-```
-
-Stage README changes:
-
-```bash
-git add README.md
-```
-
-Commit changes:
-
-```bash
-git commit -m "Finalize Week 7 README"
-```
-
-Push changes:
-
-```bash
-git push origin main
-```
-
----
-
-# Final Project Components
-
-The completed project includes:
-
-- Web Health Lambda
-- Website availability monitoring
-- Website latency monitoring
-- Custom CloudWatch metrics
-- CloudWatch Dashboard
-- Six CloudWatch alarms
-- EventBridge scheduling
-- SNS email notifications
-- Alarm Logger Lambda
-- DynamoDB alarm logging
-- AWS CDK Infrastructure as Code
-- Operational Runbook
-- README documentation
-- GitHub Project dashboard
-
----
-
-# Final Monitoring Flow
-
-```text
-Websites
-   |
-   v
-Web Health Lambda
-   |
-   v
-CloudWatch Metrics
-   |
-   +-----------------------+
-   |                       |
-   v                       v
-Dashboard               Alarms
-                           |
-             +-------------+-------------+
-             |                           |
-             v                           v
-            SNS                    EventBridge
-             |                           |
-             v                           v
-      Email Notification         Alarm Logger Lambda
-                                         |
-                                         v
-                                      DynamoDB
-```
-
-# Week 9 - Multi-Stage CI/CD Pipeline
-
-Week 9 focused on implementing a multi-stage CI/CD pipeline for the Web Health Monitoring application using AWS CDK, AWS CodePipeline, and AWS CodeBuild.
-
-## CI/CD Pipeline
+### 15.1 Pipeline Overview
 
 Pipeline name:
 
@@ -761,968 +897,436 @@ WSU2026-WebHealth-Pipeline
 Region:
 
 ```text
-Asia Pacific (Sydney)
 ap-southeast-2
 ```
 
-The CI/CD pipeline automatically retrieves the project source code from GitHub, builds and tests the application, synthesizes the AWS CDK infrastructure, and deploys the application through BetaGamma and Production environments.
-
----
-
-## Pipeline Flow
-
-```text
-GitHub
-   |
-   v
-Source
-   |
-   v
-Build / Test / Synth
-   |
-   v
-UpdatePipeline
-(Self-Mutation)
-   |
-   v
-Assets
-   |
-   v
-BetaGamma
-   |
-   v
-Manual Approval
-   |
-   v
-Prod
-```
-
----
-
-## Pipeline Stages
-
-### Source
-
-The Source stage retrieves the latest project code from GitHub.
-
-Repository:
+Source repository:
 
 ```text
 Phalrithireach/WSU2026
 ```
 
-Branch:
+Source branch:
 
 ```text
 main
 ```
 
-The GitHub repository is connected to AWS CodePipeline so that source code changes can trigger the CI/CD process.
+### 15.2 Pipeline Stages
+
+**Source**
+
+Retrieves application source code from GitHub.
+
+**Build**
+
+Installs dependencies, compiles TypeScript, runs CDK tests and synthesizes CloudFormation.
+
+**UpdatePipeline**
+
+Updates the pipeline itself through CDK self-mutation.
+
+**Assets**
+
+Prepares and publishes assets required for the AWS deployment.
+
+**BetaGamma**
+
+Runs the unit and functional quality gate and deploys the pre-production application.
+
+**Integration Test Blocker**
+
+Runs integration tests using the BetaGamma CRUD API URL supplied from CloudFormation outputs in the updated configuration.
+
+**Manual Production Approval**
+
+Requires an authorised approval before deployment to Production.
+
+**Production**
+
+Deploys the application to the Production CloudFormation stack.
+
+### 15.3 Quality Gates
+
+The pipeline uses automated tests to prevent known failures from proceeding through deployment.
+
+Unit and functional tests are executed before BetaGamma deployment.
+
+Integration tests are executed after BetaGamma deployment and before Production approval.
+
+If a required test command exits unsuccessfully, the relevant pipeline action fails.
+
+### 15.4 Deployment Status
+
+Earlier application versions were successfully deployed to BetaGamma and Production, and the existing API was verified through live integration testing.
+
+The latest project quality-review changes have passed local compilation, testing and synthesis.
+
+Those changes are pending merge and post-deployment verification.
 
 ---
 
-### Build
+## 16. Production Monitoring and Rollback
 
-AWS CodeBuild automatically builds, tests, and synthesizes the AWS CDK application.
+The project includes additional Production operational monitoring.
 
-The build process includes:
+### 16.1 Production Lambda Alias
+
+Production uses an alias named:
 
 ```text
-npm install
-npm run build
-npm test
-npx cdk synth
+live
 ```
 
-The infrastructure unit test verifies that the required AWS resources can be created correctly.
+The updated EventBridge schedule invokes the alias rather than bypassing it.
 
----
+### 16.2 Operational Alarms
 
-### UpdatePipeline
-
-The UpdatePipeline stage uses AWS CDK self-mutation.
-
-Self-mutation allows changes made to the pipeline infrastructure code to automatically update the AWS CodePipeline configuration.
-
-This means changes to the pipeline itself can be managed using Infrastructure as Code.
-
----
-
-### Assets
-
-The Assets stage prepares and publishes the Lambda deployment packages required by the application.
-
-The assets include:
+Production operational alarms include:
 
 ```text
-HelloLambdaFunction_Code
-AlarmLoggerFunction_Code
+Prod-WebHealth-No-Invocations
+Prod-WebHealth-High-Duration
+Prod-WebHealth-Lambda-Errors
 ```
 
-These Lambda assets are prepared before deployment to the application environments.
+These detect missing invocations, high execution duration and Lambda execution errors.
+
+### 16.3 Automatic Rollback Logic
+
+The rollback Lambda is designed to:
+
+1. Receive a qualifying CloudWatch alarm state-change event.
+2. Identify the Production Lambda and `live` alias.
+3. Retrieve published Lambda versions.
+4. Find an earlier published version.
+5. Update the alias to that version.
+
+The current implementation selects the highest published version number below the current version. It does not independently verify that the selected previous version is healthy.
+
+The rollback process and scheduled invocation routing must be tested after deployment before being considered fully validated.
 
 ---
 
-### BetaGamma
+## 17. Quality Characteristics
 
-The application is first deployed to the BetaGamma environment.
+The following characteristics explain the application's reliability, security, performance, maintainability and usability.
 
-This environment is used before Production so that the deployment can be verified before releasing changes to the Production environment.
+### 17.1 Functionality
 
-The BetaGamma deployment completed successfully.
+The application supports automated website monitoring and public CRUD operations for crawler targets.
+
+The target list is stored in DynamoDB.
+
+The updated monitoring Lambda can select enabled targets from the database.
+
+HTTP responses and DynamoDB operation durations are returned to API clients.
+
+### 17.2 Reliability
+
+- Automated tests check application behaviour.
+- CloudWatch alarms detect monitoring failures.
+- EventBridge provides scheduled invocations.
+- CI/CD quality gates block failed tests.
+- BetaGamma provides a pre-production environment.
+- Manual approval controls Production releases.
+- Production alias routing supports rollback operations.
+- Fallback targets support monitoring when the target database is empty or unavailable.
+
+### 17.3 Performance
+
+- Website response latency is measured in milliseconds.
+- DynamoDB read/write durations are measured.
+- Lambda provides serverless execution.
+- DynamoDB uses on-demand request billing.
+- CloudWatch provides metric storage and graphing.
+
+Operation timing depends on workload, network conditions and AWS service response time.
+
+### 17.4 Security
+
+- IAM grants control Lambda permissions.
+- The CRUD Lambda has DynamoDB read/write access.
+- The monitoring Lambda has DynamoDB read access.
+- CloudWatch publishing is controlled through IAM permissions.
+- Production deployment requires manual approval.
+
+The API is intentionally public for the coursework demonstration.
+
+Important security limitations:
+
+- API authentication is not enabled.
+- API requests require stronger input validation.
+- User-supplied URLs should be validated and restricted before use in a real crawler.
+- A public crawler can be vulnerable to server-side request forgery (SSRF) if arbitrary URLs are allowed.
+- Error responses should avoid exposing internal implementation details.
+- API throttling and additional abuse protection should be configured before real-world use.
+
+### 17.5 Maintainability
+
+- AWS CDK defines cloud infrastructure as code.
+- TypeScript infrastructure files separate deployment responsibilities.
+- Python Lambda files separate monitoring and CRUD logic.
+- Automated tests help detect regressions.
+- GitHub provides source control.
+- GitHub Pull Requests support code review.
+- README and API documentation support future maintenance.
+
+### 17.6 Usability
+
+- RESTful endpoints use standard HTTP methods.
+- JSON request and response formats are supported.
+- API documentation provides examples.
+- PowerShell commands can test the API.
+- CloudWatch dashboards present monitoring results visually.
+- GitHub Project tracks completed work.
+
+### 17.7 Known Limitations
+
+- Dashboard widgets and website alarms are predefined for the original three websites.
+- Dynamic website targets do not automatically receive dedicated dashboard widgets or alarms.
+- The `GET /targets` CRUD operation currently uses a single DynamoDB scan without full pagination.
+- Public API input validation and authentication require further hardening.
+- The DynamoDB tables use a `DESTROY` removal policy, which is suitable only for disposable coursework resources.
+- Rollback operation requires post-deployment verification.
+- Local tests and CDK synthesis do not prove that the latest code is deployed successfully.
 
 ---
 
-### Manual Production Approval
+## 18. GitHub Project Dashboard
 
-Before the application can be deployed to Production, the pipeline requires manual approval.
+Project dashboard:
 
-Approval action:
+https://github.com/users/Phalrithireach/projects/1/views/1
 
-```text
-ApproveProductionDeployment
-```
+The GitHub Project tracks tasks using these statuses:
 
-The pipeline stops at this stage until the deployment is manually approved.
+- Todo
+- In Progress
+- Done
 
-This prevents application changes from automatically reaching Production without review.
-
----
-
-### Production
-
-After the manual approval is completed, the pipeline continues to the Production environment.
-
-The Production stage performs:
-
-```text
-WebHealthStack.Prepare
-WebHealthStack.Deploy
-```
-
-The Production deployment completed successfully.
-
----
-
-## Deployment Environments
-
-The pipeline contains two application deployment environments:
-
-```text
-BetaGamma
-Prod
-```
-
-AWS CDK stages are used to separate the environments.
-
-Environment-specific resource names are used to prevent resource naming conflicts between BetaGamma and Production.
-
----
-
-## Week 9 Files
-
-The following project files are used for the Week 9 CI/CD pipeline:
-
-```text
-bin/hello-lambda-cdk.ts
-lib/hello-lambda-cdk-stack.ts
-lib/web-health-stage.ts
-lib/pipeline-stack.ts
-test/hello-lambda-cdk.test.ts
-```
-
-### pipeline-stack.ts
-
-Defines the AWS CodePipeline configuration, including:
-
-- GitHub source
-- CodeBuild
-- CDK synthesis
-- Self-mutation
-- BetaGamma deployment
-- Manual Production approval
-- Production deployment
-
-### web-health-stage.ts
-
-Defines a reusable AWS CDK Stage for deploying the Web Health Monitoring stack into different environments.
-
-### hello-lambda-cdk-stack.ts
-
-Defines the main Web Health Monitoring infrastructure, including:
+Tracked work includes:
 
 - Web Health Lambda
-- CloudWatch metrics
-- CloudWatch Dashboard
+- Availability and latency metrics
+- CloudWatch dashboard
 - CloudWatch alarms
+- README documentation
+- Operational runbook
 - SNS notifications
 - DynamoDB alarm logging
-- Alarm Logger Lambda
-- EventBridge rules
+- CI/CD implementation
+- BetaGamma deployment
+- Production deployment
+- Automated testing
+- DynamoDB crawler target table
+- CRUD Lambda functionality
+- API Gateway endpoints
+- CRUD integration testing
+- API documentation
 
-### hello-lambda-cdk.test.ts
+The Applied Project also contains repository-backed GitHub issues associated with the CRUD implementation and testing work.
 
-Contains infrastructure unit tests used during the CI/CD build process.
-
----
-
-## Week 9 Verification
-
-The following checks were completed successfully:
-
-- AWS CDK TypeScript build passed
-- Infrastructure unit test passed
-- AWS CDK synthesis completed successfully
-- PipelineStack deployed successfully
-- GitHub Source stage succeeded
-- AWS CodeBuild stage succeeded
-- CDK self-mutation succeeded
-- Lambda assets were published successfully
-- BetaGamma Prepare succeeded
-- BetaGamma Deploy succeeded
-- Manual Production approval succeeded
-- Production Prepare succeeded
-- Production Deploy succeeded
-
-The complete CI/CD pipeline successfully deployed the Web Health Monitoring application from GitHub through BetaGamma and into Production.
+Project status is maintained in GitHub rather than relying on a fixed count in this README.
 
 ---
 
-## Week 9 Tasks Completed
+## 19. Project Structure
 
-- Created a multi-stage CI/CD pipeline using AWS CDK
-- Created the PipelineStack
-- Integrated GitHub with AWS CodePipeline
-- Added automated build and testing
-- Added AWS CDK synthesis
-- Added infrastructure unit testing
-- Configured CDK self-mutation
-- Configured Lambda asset publishing
-- Created the BetaGamma deployment environment
-- Created the Production deployment environment
-- Added a manual approval gate before Production
-- Successfully deployed the application to BetaGamma
-- Successfully approved the Production deployment
-- Successfully deployed the application to Production
+```text
+WSU2026/
+|
++-- hello-lambda-cdk/
+    |
+    +-- alarm-logger/
+    |   +-- index.py
+    |
+    +-- bin/
+    |   +-- hello-lambda-cdk.ts
+    |
+    +-- lambda/
+    |   +-- index.py
+    |   +-- crud.py
+    |
+    +-- lib/
+    |   +-- hello-lambda-cdk-stack.ts
+    |   +-- web-health-stage.ts
+    |   +-- pipeline-stack.ts
+    |
+    +-- python-tests/
+    |   +-- conftest.py
+    |   +-- test_unit.py
+    |   +-- test_functional.py
+    |   +-- test_integration.py
+    |
+    +-- test/
+    |   +-- hello-lambda-cdk.test.ts
+    |
+    +-- API_DOCUMENTATION.md
+    +-- RUNBOOK.md
+    +-- README.md
+    +-- requirements-dev.txt
+    +-- package.json
+    +-- package-lock.json
+    +-- cdk.json
+    +-- tsconfig.json
+```
+
+Generated directories such as `node_modules/`, `cdk.out/` and Python caches are not part of the source deliverables.
 
 ---
 
-## Week 9 Learning Outcomes
+## 20. Weekly Development Progress
 
-During Week 9 I learned how to:
+### Week 3 – Website Health Monitoring
 
-- Understand Continuous Integration and Continuous Deployment
-- Create CI/CD pipelines using AWS CodePipeline
-- Integrate GitHub with AWS CodePipeline
-- Use AWS CodeBuild for automated builds and tests
-- Use AWS CDK Pipelines
-- Use Infrastructure as Code for CI/CD
-- Create multiple deployment environments
-- Use CDK self-mutation
-- Publish Lambda deployment assets
-- Deploy infrastructure to BetaGamma before Production
-- Configure manual Production approval
-- Deploy infrastructure automatically through a CI/CD pipeline
+- Implemented the Web Health Lambda.
+- Configured the initial three websites.
+- Measured availability and latency.
+- Published custom CloudWatch metrics.
+- Configured automated EventBridge execution.
+
+### Week 4 – CloudWatch Alarms
+
+- Created availability alarms.
+- Created latency alarms.
+- Configured thresholds and evaluation periods.
+- Verified the alarm configuration.
+
+### Week 5 – Documentation and Project Management
+
+- Improved README documentation.
+- Created operational documentation.
+- Organised project tasks.
+- Maintained source code through GitHub.
+
+### Week 6 – SNS and Alarm Logging
+
+- Integrated Amazon SNS.
+- Added email notification functionality.
+- Created a DynamoDB alarm log table.
+- Implemented an Alarm Logger Lambda.
+- Tested the alarm logging workflow.
+
+### Week 7 – Project Verification
+
+- Reviewed the monitoring components.
+- Verified configured AWS services.
+- Updated project documentation.
+- Prepared the application for further development.
+
+### Week 9 – Multi-Stage CI/CD
+
+- Created AWS CodePipeline using CDK.
+- Connected the GitHub repository.
+- Added build, synthesis and asset publishing stages.
+- Created BetaGamma and Production environments.
+- Added manual Production approval.
+
+### Week 10 – Automated Testing
+
+- Created Python unit tests.
+- Created Python functional tests.
+- Created Python integration tests.
+- Added automated quality gates.
+- Verified BetaGamma and Production pipeline operation.
+
+### Week 11 – Operational Monitoring and Rollback
+
+- Added Production Lambda alias support.
+- Added operational CloudWatch alarms.
+- Implemented rollback Lambda logic.
+- Configured EventBridge alarm-triggered rollback.
+- Updated project documentation.
+
+### Applied Project – CRUD API
+
+- Created a DynamoDB target table.
+- Implemented CRUD business logic.
+- Created API Gateway endpoints.
+- Measured DynamoDB read/write time.
+- Added CRUD unit, functional and integration tests.
+- Integrated testing into CI/CD.
+- Created API documentation.
+- Created GitHub issues to record completed work.
+- Prepared improvements for DynamoDB-driven monitoring and Production alias routing.
 
 ---
 
-# Final CI/CD Pipeline
+## 21. Verification Summary
 
-```text
-GitHub Repository
-        |
-        v
-      Source
-        |
-        v
- Build / Test / Synth
-        |
-        v
-  UpdatePipeline
-  (Self-Mutation)
-        |
-        v
-      Assets
-        |
-        v
-    BetaGamma
-        |
-        v
- Manual Approval
-        |
-        v
-       Prod
-```
+| Requirement | Evidence |
+|---|---|
+| Website monitoring | Lambda source and monitoring results |
+| Availability and latency | CloudWatch custom metrics |
+| Dashboard | CloudWatch dashboard |
+| Alarm notifications | CloudWatch alarms and SNS |
+| Alarm logging | EventBridge, Lambda and DynamoDB |
+| CRUD API | API Gateway methods and Python Lambda |
+| Database target list | DynamoDB target table |
+| Read/write performance | CRUD response timing fields |
+| Unit testing | PyTest results |
+| Functional testing | PyTest results |
+| Integration testing | BetaGamma API test results |
+| Infrastructure testing | Jest test results |
+| Infrastructure as Code | AWS CDK source |
+| Automated deployment | AWS CodePipeline |
+| Production approval | Manual approval action |
+| Documentation | README, API documentation and runbook |
+| Project management | GitHub Project dashboard and issues |
+
+The latest reviewed development branch passed 27 Python tests, one CDK Jest test, the TypeScript build and CDK synthesis.
+
+The updated changes must still be deployed and checked in AWS before final deployment verification is complete.
 
 ---
 
-# Conclusion
+## 22. Documentation
 
-The WSU2026 DevOps Web Health Monitor provides automated monitoring for Google, GitHub, and Amazon.
+Additional documentation:
 
-The project collects availability and latency telemetry, publishes metrics to Amazon CloudWatch, displays the metrics on a CloudWatch Dashboard, evaluates alarm thresholds, sends SNS email notifications, and records CloudWatch alarm state changes in Amazon DynamoDB.
-
-Amazon EventBridge automatically runs the Web Health Lambda every 30 minutes. CloudWatch alarms monitor website availability and latency, while SNS provides email notifications when alarm thresholds are breached.
-
-An Alarm Logger Lambda receives CloudWatch alarm state-change events through EventBridge and stores the alarm name, state, reason, and timestamp in DynamoDB.
-
-AWS CDK is used to manage the infrastructure as code, while GitHub is used for source control, documentation, and project tracking.
-
-A multi-stage CI/CD pipeline was implemented using AWS CodePipeline and AWS CodeBuild. The pipeline automatically retrieves the source code from GitHub, builds and tests the application, synthesizes the AWS CDK infrastructure, publishes the deployment assets, and deploys the application first to the BetaGamma environment.
-
-Before Production deployment, the pipeline requires manual approval. After approval, the Web Health Monitoring infrastructure is automatically deployed to the Production environment.
-
-The completed project demonstrates Infrastructure as Code, automated monitoring, telemetry, alerting, notification, persistent alarm logging, automated testing, CI/CD automation, multi-stage deployment, environment separation, production approval controls, operational documentation, and GitHub project management.
+- [API Documentation](API_DOCUMENTATION.md) – CRUD endpoints, request bodies, responses and testing examples
+- [Operational Runbook](RUNBOOK.md) – Monitoring, troubleshooting and operational procedures
+- [GitHub Project Dashboard](https://github.com/users/Phalrithireach/projects/1/views/1) – Project tasks and progress
+- [Pull Request #8](https://github.com/Phalrithireach/WSU2026/pull/8) – Applied Project quality improvements under review
 
 ---
 
-# Week 10 - Automated Testing and Pipeline Test Blockers
-
-Week 10 focused on integrating automated testing into the Web Health Monitoring CI/CD pipeline.
-
-The project uses PyTest to run unit, functional, and integration tests before deployment.
-
-## Week 10 Testing Requirements
-
-The following automated tests were implemented:
-
-```text
-12 Unit Tests
-9 Functional Tests
-3 Integration Tests
-```
-
-Total:
-
-```text
-24 Automated Tests
-```
-
-All 24 tests passed successfully.
-
-## Unit Tests
-
-Ten unit tests were created for the Web Health Lambda.
-
-The unit tests verify:
-
-- Three websites are configured
-- Google is configured
-- GitHub is configured
-- Amazon is configured
-- Lambda handler returns HTTP 200
-- Successful websites return Availability = 1
-- Successful websites return HTTP status 200
-- Failed websites return Availability = 0
-- Failed websites return error information
-- CloudWatch Availability and Latency metrics are published correctly
-
-External network and CloudWatch dependencies are mocked during unit testing.
-
-## Functional Tests
-
-Eight functional tests were created to verify the behaviour of the Web Health Lambda as a complete function.
-
-The functional tests verify:
-
-- Three website results are returned
-- All configured websites are included
-- Successful websites are marked available
-- A failed website is detected correctly
-- Failed website error details are returned
-- CloudWatch is called for every website
-- Each CloudWatch request contains Availability and Latency metrics
-- HTTP requests use the configured timeout and User-Agent
-
-## Integration Tests
-
-Two integration tests were created.
-
-The integration tests perform real HTTP checks against:
-
-```text
-https://google.com
-https://github.com
-https://amazon.com
-```
-
-The integration tests verify:
-
-- Live websites can be checked successfully
-- Website checks generate the expected CloudWatch metric data
-
-## PyTest
-
-The Python automated tests are located in:
-
-```text
-python-tests/
-├── conftest.py
-├── test_unit.py
-├── test_functional.py
-└── test_integration.py
-```
-
-Development dependencies are defined in:
-
-```text
-requirements-dev.txt
-```
-
-The test suite can be executed using:
-
-```bash
-py -m pytest python-tests -v
-```
-
-Final local test result:
-
-```text
-20 passed
-```
-
-## CI/CD Test Blockers
-
-Automated tests were added to the AWS CodePipeline as deployment blockers.
-
-The pipeline now follows this flow:
-
-```text
-GitHub
-   |
-   v
-Source
-   |
-   v
-Build / Test / Synth
-   |
-   v
-UpdatePipeline
-   |
-   v
-Assets
-   |
-   v
-UnitFunctionalTestBlocker
-   |
-   v
-BetaGamma
-   |
-   v
-IntegrationTestBlocker
-   |
-   v
-Manual Production Approval
-   |
-   v
-Prod
-```
-
-## Unit and Functional Test Blocker
-
-Pipeline action:
-
-```text
-UnitFunctionalTestBlocker
-```
-
-This action runs:
-
-```text
-10 Unit Tests
-8 Functional Tests
-```
-
-The BetaGamma environment cannot be deployed if these tests fail.
-
-The Week 10 pipeline execution successfully passed the UnitFunctionalTestBlocker before deploying to BetaGamma.
-
-## Integration Test Blocker
-
-Pipeline action:
-
-```text
-IntegrationTestBlocker
-```
-
-This action runs:
-
-```text
-2 Integration Tests
-```
-
-Production deployment cannot continue if the integration tests fail.
-
-The Week 10 pipeline execution successfully passed the IntegrationTestBlocker before the Production approval stage.
-
-## Production Approval
-
-After all automated tests passed, the pipeline stopped at:
-
-```text
-ApproveProductionDeployment
-```
-
-The Production deployment was manually approved.
-
-After approval:
-
-```text
-WebHealthStack.Prepare
-WebHealthStack.Deploy
-```
-
-completed successfully.
-
-## Week 10 Completed Work
-
-Week 10 completed the following:
-
-- Created 10 unit tests
-- Created 8 functional tests
-- Created 2 integration tests
-- Installed and configured PyTest
-- Added reusable PyTest fixtures
-- Verified all 20 tests locally
-- Added UnitFunctionalTestBlocker to AWS CodePipeline
-- Added IntegrationTestBlocker to AWS CodePipeline
-- Prevented BetaGamma deployment when unit or functional tests fail
-- Prevented Production progression when integration tests fail
-- Retained manual Production approval
-- Successfully deployed to BetaGamma
-- Successfully deployed to Production
-- Verified the complete CI/CD pipeline
-
-## Week 10 Learning Outcomes
-
-During Week 10 I learned how to:
-
-- Use PyTest for automated testing
-- Create unit tests
-- Create functional tests
-- Create integration tests
-- Mock external dependencies during testing
-- Integrate automated testing with AWS CodePipeline
-- Use automated tests as deployment blockers
-- Prevent failed builds from reaching deployment environments
-- Test before BetaGamma deployment
-- Test before Production deployment
-- Use manual approval together with automated quality gates
-- Apply continuous testing practices in a CI/CD pipeline
-
-# Week 11 - Operational Monitoring and Automatic Rollback
-
-Week 11 focused on operational monitoring and automatic rollback for the Production Web Health Monitoring environment.
-
-## Week 11 Completed Work
-
-The following operational monitoring features were implemented:
-
-- Production Lambda alias named `live`
-- CloudWatch operational metrics for the Production Lambda
-- Alarm for missing Lambda invocations
-- Alarm for high Lambda execution duration
-- Alarm for Lambda execution errors
-- EventBridge rule for Production alarm state changes
-- Automatic rollback Lambda function
-- Automatic rollback of the `live` alias to the previous Lambda version
-- Production deployment verified successfully through AWS CodePipeline
-
-## Production Operational Alarms
-
-The following CloudWatch alarms were created:
-
-### Prod-WebHealth-No-Invocations
-
-Detects when the Production Lambda does not receive the expected invocations.
-
-Condition:
-
-```text
-Invocations < 1
+## 23. Learning Outcomes
+
+Through this project, I learned how to:
+
+- Build a serverless application using AWS Lambda.
+- Define cloud infrastructure using AWS CDK.
+- Monitor website availability and response latency.
+- Publish CloudWatch custom metrics.
+- Configure CloudWatch alarms and SNS notifications.
+- Use EventBridge for scheduled tasks and event routing.
+- Store operational data in DynamoDB.
+- Build RESTful APIs using Amazon API Gateway.
+- Implement CRUD logic with Python.
+- Measure DynamoDB operation performance.
+- Write unit, functional and integration tests.
+- Automate build and deployment stages through AWS CodePipeline.
+- Manage BetaGamma and Production environments.
+- Apply CI/CD quality gates and manual approval.
+- Implement Lambda alias-based rollback logic.
+- Use GitHub for code review, project management and documentation.
 
 ---
 
-# Applied Project - Web Crawler CRUD API
+## 24. Conclusion
 
-The Applied Project extends the Web Health Monitoring system with a public REST API for managing the list of websites and webpages that can be crawled.
+The WSU2026 DevOps Web Health Monitoring Project demonstrates the integration of cloud-native monitoring, serverless development, Infrastructure as Code, automated testing and CI/CD.
 
-The solution uses:
+The Applied Project extends the original monitoring application with a RESTful CRUD API backed by DynamoDB.
 
-- Amazon API Gateway
-- AWS Lambda
-- Amazon DynamoDB
-- AWS CDK
-- AWS CodePipeline
-- PyTest
+The solution provides website availability and latency monitoring, target management, CloudWatch alerting, automated verification and controlled deployment to BetaGamma and Production environments.
 
----
+The latest improvements focus on ensuring that the monitoring Lambda uses the DynamoDB target list, integration tests validate BetaGamma before Production approval, and Production scheduling correctly uses the Lambda alias.
 
-## CRUD Architecture
-
-```text
-User / Client
-      |
-      v
-Amazon API Gateway
-      |
-      v
-Web Crawler CRUD Lambda
-      |
-      v
-Amazon DynamoDB
-```
-
-The API allows users to create, read, update, and delete web crawler targets.
+These improvements have passed local tests and infrastructure synthesis. Final verification will be completed after controlled AWS deployment.
 
 ---
 
-## Production API Endpoint
-
-Base URL:
-
-```text
-https://wuyes58ng1.execute-api.ap-southeast-2.amazonaws.com/prod
-```
-
-Main resource:
-
-```text
-/targets
-```
-
----
-
-## CRUD Operations
-
-### Create Target
-
-```text
-POST /targets
-```
-
-Example body:
-
-```json
-{
-  "id": "google",
-  "url": "https://google.com",
-  "enabled": true
-}
-```
-
----
-
-### Read All Targets
-
-```text
-GET /targets
-```
-
-Returns all target records stored in DynamoDB.
-
----
-
-### Read One Target
-
-```text
-GET /targets/{id}
-```
-
-Example:
-
-```text
-GET /targets/google
-```
-
----
-
-### Update Target
-
-```text
-PUT /targets/{id}
-```
-
-Example body:
-
-```json
-{
-  "url": "https://www.google.com",
-  "enabled": false
-}
-```
-
----
-
-### Delete Target
-
-```text
-DELETE /targets/{id}
-```
-
-Example:
-
-```text
-DELETE /targets/google
-```
-
----
-
-## DynamoDB Target Table
-
-The crawler target list is stored in Amazon DynamoDB.
-
-Each target contains:
-
-```text
-id
-url
-enabled
-```
-
-The `id` field is used as the DynamoDB partition key.
-
----
-
-## DynamoDB Performance Measurement
-
-The CRUD Lambda measures DynamoDB operation performance.
-
-Read operations return:
-
-```text
-dynamodb_read_ms
-```
-
-Write operations return:
-
-```text
-dynamodb_write_ms
-```
-
-This allows DynamoDB read and write performance to be observed and tested.
-
----
-
-## CRUD Testing
-
-The Applied Project added the required CRUD automated tests.
-
-```text
-2 CRUD Unit Tests
-1 CRUD Functional Test
-1 CRUD Integration Test
-```
-
-The complete Python test suite now contains:
-
-```text
-12 Unit Tests
-9 Functional Tests
-3 Integration Tests
--------------------
-24 Tests Total
-```
-
-Run the complete suite with:
-
-```bash
-py -m pytest python-tests -v
-```
-
-Verified result:
-
-```text
-24 passed
-```
-
----
-
-## CRUD Unit Tests
-
-The CRUD unit tests verify:
-
-- POST creates a target successfully
-- GET returns an individual target
-- DynamoDB calls are mocked
-- DynamoDB read/write timing fields are returned
-
----
-
-## CRUD Functional Test
-
-The functional test verifies the application flow:
-
-```text
-Create Target
-     |
-     v
-Read Target
-     |
-     v
-Validate Returned Data
-```
-
-It also checks:
-
-```text
-dynamodb_write_ms
-dynamodb_read_ms
-```
-
----
-
-## CRUD Integration Test
-
-The CRUD integration test exercises the deployed AWS environment.
-
-```text
-PyTest
-   |
-   v
-API Gateway
-   |
-   v
-CRUD Lambda
-   |
-   v
-DynamoDB
-```
-
-The test performs:
-
-```text
-POST
-GET
-PUT
-DELETE
-```
-
-against the deployed Production API and cleans up the test target afterward.
-
----
-
-## CI/CD Integration
-
-The CRUD functionality and automated tests are integrated with the existing AWS CodePipeline.
-
-```text
-GitHub
-   |
-   v
-Source
-   |
-   v
-Build / Test / Synth
-   |
-   v
-UpdatePipeline
-   |
-   v
-Assets
-   |
-   v
-BetaGamma
-   |
-   v
-Automated Tests
-   |
-   v
-Manual Production Approval
-   |
-   v
-Prod
-```
-
-The final pipeline deployment completed successfully with all stages passing.
-
----
-
-## Applied Project Verification
-
-The following functions were successfully demonstrated:
-
-```text
-POST /targets          Create target        ✅
-GET /targets           Read all targets     ✅
-GET /targets/{id}      Read one target       ✅
-PUT /targets/{id}      Update target         ✅
-DELETE /targets/{id}   Delete target         ✅
-```
-
-Additional verification:
-
-```text
-DynamoDB read timing       ✅
-DynamoDB write timing      ✅
-24 automated Python tests  ✅
-CDK infrastructure test    ✅
-BetaGamma deployment       ✅
-Production deployment      ✅
-CI/CD pipeline             ✅
-```
-
----
-
-## API Documentation
-
-Full REST API documentation is available in:
-
-[API_DOCUMENTATION.md](API_DOCUMENTATION.md)
-
-The API documentation includes:
-
-- API endpoint information
-- Request formats
-- Response formats
-- Error responses
-- PowerShell examples
-- DynamoDB performance measurement
-- Testing information
-- CI/CD information
-
----
-
-## Applied Project Files
-
-```text
-hello-lambda-cdk/
-│
-├── lambda/
-│   ├── index.py
-│   └── crud.py
-│
-├── python-tests/
-│   ├── conftest.py
-│   ├── test_unit.py
-│   ├── test_functional.py
-│   └── test_integration.py
-│
-├── lib/
-│   ├── hello-lambda-cdk-stack.ts
-│   ├── web-health-stage.ts
-│   └── pipeline-stack.ts
-│
-├── API_DOCUMENTATION.md
-├── README.md
-└── RUNBOOK.md
-```
-
----
-
-## Applied Project Learning Outcomes
-
-Through the Applied Project I learned how to:
-
-- Create REST APIs using Amazon API Gateway
-- Implement CRUD operations with AWS Lambda
-- Store application data in Amazon DynamoDB
-- Measure DynamoDB read and write performance
-- Integrate API Gateway with Lambda
-- Manage AWS infrastructure using AWS CDK
-- Create unit, functional, and integration tests
-- Test a real deployed REST API
-- Use automated tests as CI/CD quality gates
-- Deploy through BetaGamma and Production environments
-- Use manual Production approval
-- Document REST APIs and cloud infrastructure
+**COMP2029 – DevOps | Western Sydney University | Spring 2026**

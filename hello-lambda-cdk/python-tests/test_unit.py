@@ -1,7 +1,12 @@
+
 import json
 import types
 from unittest.mock import MagicMock
 
+
+# ---------------------------------------------------------
+# TEST HELPERS
+# ---------------------------------------------------------
 
 class FakeResponse:
     def __init__(self, status=200):
@@ -32,7 +37,6 @@ def run_successful_handler(module, monkeypatch):
     monkeypatch.setattr(module, "time", fake_time)
 
     response = module.lambda_handler({}, None)
-
     body = json.loads(response["body"])
 
     return response, body
@@ -62,7 +66,6 @@ def run_failed_handler(module, monkeypatch):
     monkeypatch.setattr(module, "time", fake_time)
 
     response = module.lambda_handler({}, None)
-
     body = json.loads(response["body"])
 
     return response, body
@@ -222,7 +225,6 @@ def test_cloudwatch_metrics_are_published(
         monkeypatch
     )
 
-    # One CloudWatch request for each website
     assert fake_cloudwatch.put_metric_data.call_count == 3
 
     first_call = (
@@ -255,8 +257,9 @@ def test_cloudwatch_metrics_are_published(
         }
     ]
 
-    # ---------------------------------------------------------
-# APPLIED PROJECT - CRUD UNIT TEST 1
+
+# ---------------------------------------------------------
+# UNIT TEST 11
 # Verify POST creates a crawler target
 # ---------------------------------------------------------
 
@@ -285,8 +288,8 @@ def test_crud_post_creates_target(crud_module):
 
 
 # ---------------------------------------------------------
-# APPLIED PROJECT - CRUD UNIT TEST 2
-# Verify GET returns one crawler target
+# UNIT TEST 12
+# Verify GET returns an individual crawler target
 # ---------------------------------------------------------
 
 def test_crud_get_returns_target(crud_module):
@@ -320,3 +323,251 @@ def test_crud_get_returns_target(crud_module):
             "id": "google"
         }
     )
+
+
+# ---------------------------------------------------------
+# UNIT TEST 13
+# Monitor loads enabled targets from DynamoDB
+# ---------------------------------------------------------
+
+def test_monitor_loads_enabled_targets_from_dynamodb(
+    lambda_module,
+    monkeypatch
+):
+    module, _ = lambda_module
+
+    monkeypatch.setenv(
+        "TABLE_NAME",
+        "TestWebCrawlerTargets"
+    )
+
+    table = MagicMock()
+
+    table.scan.return_value = {
+        "Items": [
+            {
+                "id": "example",
+                "url": "https://example.com",
+                "enabled": True
+            },
+            {
+                "id": "disabled",
+                "url": "https://disabled.example",
+                "enabled": False
+            }
+        ]
+    }
+
+    module.boto3.resource = MagicMock()
+    module.boto3.resource.return_value.Table.return_value = table
+
+    assert module.get_websites() == [
+        "https://example.com"
+    ]
+
+
+# ---------------------------------------------------------
+# UNIT TEST 14
+# Monitor defaults when DynamoDB target table is empty
+# ---------------------------------------------------------
+
+def test_monitor_defaults_when_target_table_is_empty(
+    lambda_module,
+    monkeypatch
+):
+    module, _ = lambda_module
+
+    monkeypatch.setenv(
+        "TABLE_NAME",
+        "TestWebCrawlerTargets"
+    )
+
+    table = MagicMock()
+
+    table.scan.return_value = {
+        "Items": []
+    }
+
+    module.boto3.resource = MagicMock()
+    module.boto3.resource.return_value.Table.return_value = table
+
+    assert module.get_websites() == module.websites
+
+
+# ---------------------------------------------------------
+# UNIT TEST 15
+# PUT returns HTTP 404 if target does not exist
+# ---------------------------------------------------------
+
+def test_crud_put_missing_target_returns_404(crud_module):
+    module, fake_table = crud_module
+
+    error_type = (
+        module.dynamodb.meta.client.exceptions
+        .ConditionalCheckFailedException
+    )
+
+    fake_table.update_item.side_effect = error_type()
+
+    event = {
+        "httpMethod": "PUT",
+        "pathParameters": {
+            "id": "missing"
+        },
+        "body": json.dumps({
+            "enabled": False
+        })
+    }
+
+    result = module.lambda_handler(event, None)
+
+    assert result["statusCode"] == 404
+
+    assert (
+        json.loads(result["body"])["message"]
+        == "Target not found"
+    )
+
+    assert (
+        fake_table.update_item
+        .call_args.kwargs["ConditionExpression"]
+        == "attribute_exists(id)"
+    )
+
+
+# ---------------------------------------------------------
+# UNIT TEST 16
+# Verify URL security validation and enforcement
+# ---------------------------------------------------------
+
+def test_crud_url_validation(crud_module):
+    module, fake_table = crud_module
+
+    # Approved HTTPS URLs
+    approved_urls = [
+        "https://google.com",
+        "https://github.com",
+        "https://amazon.com",
+        "https://example.com",
+        "https://www.google.com",
+        "https://www.github.com",
+        "https://www.amazon.com",
+        "https://www.example.com"
+    ]
+
+    for url in approved_urls:
+        assert module.valid_target_url(url), (
+            f"Approved URL rejected: {url}"
+        )
+
+    # Invalid or unapproved URLs
+    invalid_urls = [
+        "http://google.com",
+        "https://localhost",
+        "https://127.0.0.1",
+        "https://169.254.169.254",
+        "https://evil.com",
+        "https://google.com.evil.com",
+        "https://google.com:8443",
+        "https://evil.com@google.com",
+        "ftp://google.com",
+        "not-a-url",
+        "",
+        None,
+        123
+    ]
+
+    for url in invalid_urls:
+        assert not module.valid_target_url(url), (
+            f"Invalid URL accepted: {url}"
+        )
+
+    # Verify POST rejects unapproved URLs
+    post_event = {
+        "httpMethod": "POST",
+        "body": json.dumps({
+            "id": "unsafe-post",
+            "url": "https://evil.com",
+            "enabled": True
+        })
+    }
+
+    post_response = module.lambda_handler(
+        post_event,
+        None
+    )
+
+    assert post_response["statusCode"] == 400
+    assert (
+        json.loads(post_response["body"])["message"]
+        == "Invalid or unapproved URL"
+    )
+
+    fake_table.put_item.assert_not_called()
+
+    # Verify PUT rejects unapproved URLs
+    put_event = {
+        "httpMethod": "PUT",
+        "pathParameters": {
+            "id": "google"
+        },
+        "body": json.dumps({
+            "url": "http://127.0.0.1"
+        })
+    }
+
+    put_response = module.lambda_handler(
+        put_event,
+        None
+    )
+
+    assert put_response["statusCode"] == 400
+    assert (
+        json.loads(put_response["body"])["message"]
+        == "Invalid or unapproved URL"
+    )
+
+    fake_table.update_item.assert_not_called()
+
+
+# ---------------------------------------------------------
+# UNIT TEST 17
+# Verify unsafe HTTP redirects are blocked
+# ---------------------------------------------------------
+
+def test_unsafe_redirect_is_blocked(lambda_module):
+    module, _ = lambda_module
+
+    handler = module.SafeRedirectHandler()
+
+    request = module.urllib.request.Request(
+        "https://google.com"
+    )
+
+    unsafe_destinations = [
+        "http://127.0.0.1/admin",
+        "https://localhost/admin",
+        "http://169.254.169.254/latest/meta-data/",
+        "https://evil.com",
+        "https://google.com.evil.com",
+        "http://google.com",
+    ]
+
+    for destination in unsafe_destinations:
+        try:
+            handler.redirect_request(
+                request,
+                None,
+                302,
+                "Found",
+                {},
+                destination
+            )
+
+        except module.urllib.error.HTTPError as error:
+            assert "Blocked unsafe HTTP redirect" in str(error)
+
+        else:
+            raise AssertionError(
+                f"Unsafe redirect was not blocked: {destination}"
+            )
