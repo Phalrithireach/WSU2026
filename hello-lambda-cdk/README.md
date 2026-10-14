@@ -1087,18 +1087,18 @@ The project uses PyTest to run unit, functional, and integration tests before de
 The following automated tests were implemented:
 
 ```text
-10 Unit Tests
-8 Functional Tests
-2 Integration Tests
+12 Unit Tests
+9 Functional Tests
+3 Integration Tests
 ```
 
 Total:
 
 ```text
-20 Automated Tests
+24 Automated Tests
 ```
 
-All 20 tests passed successfully.
+All 24 tests passed successfully.
 
 ## Unit Tests
 
@@ -1340,3 +1340,389 @@ Condition:
 
 ```text
 Invocations < 1
+
+---
+
+# Applied Project - Web Crawler CRUD API
+
+The Applied Project extends the Web Health Monitoring system with a public REST API for managing the list of websites and webpages that can be crawled.
+
+The solution uses:
+
+- Amazon API Gateway
+- AWS Lambda
+- Amazon DynamoDB
+- AWS CDK
+- AWS CodePipeline
+- PyTest
+
+---
+
+## CRUD Architecture
+
+```text
+User / Client
+      |
+      v
+Amazon API Gateway
+      |
+      v
+Web Crawler CRUD Lambda
+      |
+      v
+Amazon DynamoDB
+```
+
+The API allows users to create, read, update, and delete web crawler targets.
+
+---
+
+## Production API Endpoint
+
+Base URL:
+
+```text
+https://wuyes58ng1.execute-api.ap-southeast-2.amazonaws.com/prod
+```
+
+Main resource:
+
+```text
+/targets
+```
+
+---
+
+## CRUD Operations
+
+### Create Target
+
+```text
+POST /targets
+```
+
+Example body:
+
+```json
+{
+  "id": "google",
+  "url": "https://google.com",
+  "enabled": true
+}
+```
+
+---
+
+### Read All Targets
+
+```text
+GET /targets
+```
+
+Returns all target records stored in DynamoDB.
+
+---
+
+### Read One Target
+
+```text
+GET /targets/{id}
+```
+
+Example:
+
+```text
+GET /targets/google
+```
+
+---
+
+### Update Target
+
+```text
+PUT /targets/{id}
+```
+
+Example body:
+
+```json
+{
+  "url": "https://www.google.com",
+  "enabled": false
+}
+```
+
+---
+
+### Delete Target
+
+```text
+DELETE /targets/{id}
+```
+
+Example:
+
+```text
+DELETE /targets/google
+```
+
+---
+
+## DynamoDB Target Table
+
+The crawler target list is stored in Amazon DynamoDB.
+
+Each target contains:
+
+```text
+id
+url
+enabled
+```
+
+The `id` field is used as the DynamoDB partition key.
+
+---
+
+## DynamoDB Performance Measurement
+
+The CRUD Lambda measures DynamoDB operation performance.
+
+Read operations return:
+
+```text
+dynamodb_read_ms
+```
+
+Write operations return:
+
+```text
+dynamodb_write_ms
+```
+
+This allows DynamoDB read and write performance to be observed and tested.
+
+---
+
+## CRUD Testing
+
+The Applied Project added the required CRUD automated tests.
+
+```text
+2 CRUD Unit Tests
+1 CRUD Functional Test
+1 CRUD Integration Test
+```
+
+The complete Python test suite now contains:
+
+```text
+12 Unit Tests
+9 Functional Tests
+3 Integration Tests
+-------------------
+24 Tests Total
+```
+
+Run the complete suite with:
+
+```bash
+py -m pytest python-tests -v
+```
+
+Verified result:
+
+```text
+24 passed
+```
+
+---
+
+## CRUD Unit Tests
+
+The CRUD unit tests verify:
+
+- POST creates a target successfully
+- GET returns an individual target
+- DynamoDB calls are mocked
+- DynamoDB read/write timing fields are returned
+
+---
+
+## CRUD Functional Test
+
+The functional test verifies the application flow:
+
+```text
+Create Target
+     |
+     v
+Read Target
+     |
+     v
+Validate Returned Data
+```
+
+It also checks:
+
+```text
+dynamodb_write_ms
+dynamodb_read_ms
+```
+
+---
+
+## CRUD Integration Test
+
+The CRUD integration test exercises the deployed AWS environment.
+
+```text
+PyTest
+   |
+   v
+API Gateway
+   |
+   v
+CRUD Lambda
+   |
+   v
+DynamoDB
+```
+
+The test performs:
+
+```text
+POST
+GET
+PUT
+DELETE
+```
+
+against the deployed Production API and cleans up the test target afterward.
+
+---
+
+## CI/CD Integration
+
+The CRUD functionality and automated tests are integrated with the existing AWS CodePipeline.
+
+```text
+GitHub
+   |
+   v
+Source
+   |
+   v
+Build / Test / Synth
+   |
+   v
+UpdatePipeline
+   |
+   v
+Assets
+   |
+   v
+BetaGamma
+   |
+   v
+Automated Tests
+   |
+   v
+Manual Production Approval
+   |
+   v
+Prod
+```
+
+The final pipeline deployment completed successfully with all stages passing.
+
+---
+
+## Applied Project Verification
+
+The following functions were successfully demonstrated:
+
+```text
+POST /targets          Create target        ✅
+GET /targets           Read all targets     ✅
+GET /targets/{id}      Read one target       ✅
+PUT /targets/{id}      Update target         ✅
+DELETE /targets/{id}   Delete target         ✅
+```
+
+Additional verification:
+
+```text
+DynamoDB read timing       ✅
+DynamoDB write timing      ✅
+24 automated Python tests  ✅
+CDK infrastructure test    ✅
+BetaGamma deployment       ✅
+Production deployment      ✅
+CI/CD pipeline             ✅
+```
+
+---
+
+## API Documentation
+
+Full REST API documentation is available in:
+
+[API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+
+The API documentation includes:
+
+- API endpoint information
+- Request formats
+- Response formats
+- Error responses
+- PowerShell examples
+- DynamoDB performance measurement
+- Testing information
+- CI/CD information
+
+---
+
+## Applied Project Files
+
+```text
+hello-lambda-cdk/
+│
+├── lambda/
+│   ├── index.py
+│   └── crud.py
+│
+├── python-tests/
+│   ├── conftest.py
+│   ├── test_unit.py
+│   ├── test_functional.py
+│   └── test_integration.py
+│
+├── lib/
+│   ├── hello-lambda-cdk-stack.ts
+│   ├── web-health-stage.ts
+│   └── pipeline-stack.ts
+│
+├── API_DOCUMENTATION.md
+├── README.md
+└── RUNBOOK.md
+```
+
+---
+
+## Applied Project Learning Outcomes
+
+Through the Applied Project I learned how to:
+
+- Create REST APIs using Amazon API Gateway
+- Implement CRUD operations with AWS Lambda
+- Store application data in Amazon DynamoDB
+- Measure DynamoDB read and write performance
+- Integrate API Gateway with Lambda
+- Manage AWS infrastructure using AWS CDK
+- Create unit, functional, and integration tests
+- Test a real deployed REST API
+- Use automated tests as CI/CD quality gates
+- Deploy through BetaGamma and Production environments
+- Use manual Production approval
+- Document REST APIs and cloud infrastructure
