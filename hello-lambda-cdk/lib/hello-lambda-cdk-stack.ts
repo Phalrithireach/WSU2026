@@ -16,6 +16,8 @@ export interface HelloLambdaCdkStackProps extends cdk.StackProps {
 }
 
 export class HelloLambdaCdkStack extends cdk.Stack {
+  public readonly crudApiUrlOutput: cdk.CfnOutput;
+
   constructor(
     scope: Construct,
     id: string,
@@ -147,7 +149,7 @@ targetByIdResource.addMethod(
 );
 
 // Display API endpoint after deployment
-new cdk.CfnOutput(
+this.crudApiUrlOutput = new cdk.CfnOutput(
   this,
   'WebCrawlerCrudApiUrl',
   {
@@ -439,7 +441,7 @@ def lambda_handler(event, context):
     );
 
     scheduleRule.addTarget(
-      new targets.LambdaFunction(websiteMonitor)
+      new targets.LambdaFunction(monitorTarget)
     );
 
     // ------------------------------------------------------------
