@@ -254,3 +254,69 @@ def test_cloudwatch_metrics_are_published(
             "Value": "https://google.com"
         }
     ]
+
+    # ---------------------------------------------------------
+# APPLIED PROJECT - CRUD UNIT TEST 1
+# Verify POST creates a crawler target
+# ---------------------------------------------------------
+
+def test_crud_post_creates_target(crud_module):
+    module, fake_table = crud_module
+
+    event = {
+        "httpMethod": "POST",
+        "body": json.dumps({
+            "id": "google",
+            "url": "https://google.com",
+            "enabled": True
+        })
+    }
+
+    response = module.lambda_handler(event, None)
+    body = json.loads(response["body"])
+
+    assert response["statusCode"] == 201
+    assert body["message"] == "Target created"
+    assert body["item"]["id"] == "google"
+    assert body["item"]["url"] == "https://google.com"
+    assert "dynamodb_write_ms" in body
+
+    fake_table.put_item.assert_called_once()
+
+
+# ---------------------------------------------------------
+# APPLIED PROJECT - CRUD UNIT TEST 2
+# Verify GET returns one crawler target
+# ---------------------------------------------------------
+
+def test_crud_get_returns_target(crud_module):
+    module, fake_table = crud_module
+
+    fake_table.get_item.return_value = {
+        "Item": {
+            "id": "google",
+            "url": "https://google.com",
+            "enabled": True
+        }
+    }
+
+    event = {
+        "httpMethod": "GET",
+        "pathParameters": {
+            "id": "google"
+        }
+    }
+
+    response = module.lambda_handler(event, None)
+    body = json.loads(response["body"])
+
+    assert response["statusCode"] == 200
+    assert body["item"]["id"] == "google"
+    assert body["item"]["url"] == "https://google.com"
+    assert "dynamodb_read_ms" in body
+
+    fake_table.get_item.assert_called_once_with(
+        Key={
+            "id": "google"
+        }
+    )

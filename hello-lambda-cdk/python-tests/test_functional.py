@@ -251,3 +251,67 @@ def test_web_requests_use_timeout_and_user_agent(
             request.get_header("User-agent")
             == "Mozilla/5.0"
         )
+
+        # ---------------------------------------------------------
+# APPLIED PROJECT - CRUD FUNCTIONAL TEST
+# Verify create then read target flow
+# ---------------------------------------------------------
+
+def test_crud_create_and_read_flow(crud_module):
+    module, fake_table = crud_module
+
+    # Simulate POST /targets
+    create_event = {
+        "httpMethod": "POST",
+        "body": json.dumps({
+            "id": "github",
+            "url": "https://github.com",
+            "enabled": True
+        })
+    }
+
+    create_response = module.lambda_handler(
+        create_event,
+        None
+    )
+
+    create_body = json.loads(
+        create_response["body"]
+    )
+
+    assert create_response["statusCode"] == 201
+    assert create_body["message"] == "Target created"
+
+    # Simulate DynamoDB returning the saved target
+    fake_table.get_item.return_value = {
+        "Item": {
+            "id": "github",
+            "url": "https://github.com",
+            "enabled": True
+        }
+    }
+
+    # Simulate GET /targets/github
+    read_event = {
+        "httpMethod": "GET",
+        "pathParameters": {
+            "id": "github"
+        }
+    }
+
+    read_response = module.lambda_handler(
+        read_event,
+        None
+    )
+
+    read_body = json.loads(
+        read_response["body"]
+    )
+
+    assert read_response["statusCode"] == 200
+    assert read_body["item"]["id"] == "github"
+    assert read_body["item"]["url"] == "https://github.com"
+
+    # Read/write timing requirements
+    assert "dynamodb_write_ms" in create_body
+    assert "dynamodb_read_ms" in read_body

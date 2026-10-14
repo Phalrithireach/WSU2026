@@ -32,3 +32,50 @@ def lambda_module(monkeypatch):
     spec.loader.exec_module(module)
 
     return module, fake_cloudwatch
+
+@pytest.fixture
+def crud_module(monkeypatch):
+    """
+    Load lambda/crud.py using a mocked DynamoDB table.
+    """
+
+    project_root = Path(__file__).resolve().parents[1]
+    crud_file = project_root / "lambda" / "crud.py"
+
+    fake_table = MagicMock()
+    fake_dynamodb = MagicMock()
+
+    fake_dynamodb.Table.return_value = fake_table
+
+    class ConditionalCheckFailedException(Exception):
+        pass
+
+    fake_dynamodb.meta.client.exceptions.ConditionalCheckFailedException = (
+        ConditionalCheckFailedException
+    )
+
+    fake_boto3 = types.ModuleType("boto3")
+    fake_boto3.resource = MagicMock(
+        return_value=fake_dynamodb
+    )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "boto3",
+        fake_boto3
+    )
+
+    monkeypatch.setenv(
+        "TABLE_NAME",
+        "TestWebCrawlerTargets"
+    )
+
+    spec = importlib.util.spec_from_file_location(
+        "crud_lambda",
+        crud_file
+    )
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    return module, fake_table
