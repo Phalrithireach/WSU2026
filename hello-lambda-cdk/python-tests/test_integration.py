@@ -1,3 +1,5 @@
+import os
+import uuid
 import json
 import urllib.request
 import urllib.error
@@ -120,12 +122,14 @@ def test_live_checks_publish_metrics(lambda_module):
 # ---------------------------------------------------------
 
 def test_live_crud_api():
-    base_url = (
-        "https://wuyes58ng1.execute-api."
-        "ap-southeast-2.amazonaws.com/prod"
-    )
+    targets_url = os.environ.get("API_TARGETS_URL")
+    if not targets_url:
+        raise AssertionError(
+            "API_TARGETS_URL is required for deployed CRUD integration tests"
+        )
+    base_url = targets_url.rstrip("/").removesuffix("/targets")
 
-    target_id = "integration-test"
+    target_id = "integration-" + uuid.uuid4().hex[:12]
     target_url = f"{base_url}/targets/{target_id}"
 
     # -----------------------------------------------------
