@@ -7,6 +7,7 @@ export interface WebHealthStageProps extends cdk.StageProps {
 }
 
 export class WebHealthStage extends cdk.Stage {
+  public readonly crudApiUrlOutput: cdk.CfnOutput;
   constructor(
     scope: Construct,
     id: string,
@@ -14,12 +15,14 @@ export class WebHealthStage extends cdk.Stage {
   ) {
     super(scope, id, props);
 
-    new HelloLambdaCdkStack(
+    const stack = new HelloLambdaCdkStack(
       this,
       'WebHealthStack',
       {
         environmentName: props.environmentName,
       }
     );
+
+    this.crudApiUrlOutput = stack.crudApiUrlOutput;
   }
 }
