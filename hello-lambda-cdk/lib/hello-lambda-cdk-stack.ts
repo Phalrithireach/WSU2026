@@ -1,3 +1,4 @@
+
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -10,12 +11,16 @@ import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as logs from 'aws-cdk-lib/aws-logs';
+
 
 export interface HelloLambdaCdkStackProps extends cdk.StackProps {
   environmentName?: string;
 }
 
+
 export class HelloLambdaCdkStack extends cdk.Stack {
+
   public readonly crudApiUrlOutput: cdk.CfnOutput;
 
   constructor(
@@ -25,289 +30,428 @@ export class HelloLambdaCdkStack extends cdk.Stack {
   ) {
     super(scope, id, props);
 
-const environmentName = props?.environmentName;
-const resourcePrefix = environmentName
-  ? `WSU2026-${environmentName}`
-  : 'WSU2026';
+    const environmentName = props?.environmentName;
 
-const alarmPrefix = environmentName
-  ? `${environmentName}-`
-  : '';
+    const resourcePrefix = environmentName
+      ? `WSU2026-${environmentName}`
+      : 'WSU2026';
 
-  // ------------------------------------------------------------
-// Applied Project - Web Crawler Target List
-// DynamoDB table for CRUD API
-// ------------------------------------------------------------
+    const alarmPrefix = environmentName
+      ? `${environmentName}-`
+      : '';
 
-const targetTable = new dynamodb.Table(
-  this,
-  'WebCrawlerTargetTable',
-  {
-    tableName: `${resourcePrefix}-WebCrawler-Targets`,
+    const isProduction = environmentName === 'Prod';
 
-    partitionKey: {
-      name: 'id',
-      type: dynamodb.AttributeType.STRING,
-    },
+    // Preserve Production data if the stack is deleted.
+    const dataRemovalPolicy = isProduction
+      ? cdk.RemovalPolicy.RETAIN
+      : cdk.RemovalPolicy.DESTROY;
 
-    billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
 
-    removalPolicy: cdk.RemovalPolicy.DESTROY,
-  }
-);
+    // ============================================================
+    // 1. DYNAMODB - WEB CRAWLER TARGET TABLE
+    // ============================================================
 
-// ------------------------------------------------------------
-// Applied Project - CRUD Lambda
-// ------------------------------------------------------------
-
-const crudFunction = new lambda.Function(
-  this,
-  'WebCrawlerCrudFunction',
-  {
-    runtime: lambda.Runtime.PYTHON_3_12,
-    handler: 'crud.lambda_handler',
-    code: lambda.Code.fromAsset('lambda'),
-    timeout: cdk.Duration.seconds(30),
-
-    environment: {
-      TABLE_NAME: targetTable.tableName,
-    },
-  }
-);
-
-// Allow CRUD Lambda to read and write target records
-targetTable.grantReadWriteData(crudFunction);
-
-// ------------------------------------------------------------
-// Applied Project - API Gateway
-// ------------------------------------------------------------
-
-const crudApi = new apigateway.RestApi(
-  this,
-  'WebCrawlerCrudApi',
-  {
-    restApiName: `${resourcePrefix}-WebCrawler-API`,
-
-    description:
-      'Public CRUD API for managing Web Health crawler targets',
-
-    defaultCorsPreflightOptions: {
-      allowOrigins: apigateway.Cors.ALL_ORIGINS,
-      allowMethods: [
-        'GET',
-        'POST',
-        'PUT',
-        'DELETE',
-        'OPTIONS',
-      ],
-      allowHeaders: [
-        'Content-Type',
-      ],
-    },
-  }
-);
-
-const crudIntegration =
-  new apigateway.LambdaIntegration(crudFunction);
-
-// /targets
-const targetsResource =
-  crudApi.root.addResource('targets');
-
-// POST /targets
-targetsResource.addMethod(
-  'POST',
-  crudIntegration
-);
-
-// GET /targets
-targetsResource.addMethod(
-  'GET',
-  crudIntegration
-);
-
-// /targets/{id}
-const targetByIdResource =
-  targetsResource.addResource('{id}');
-
-// GET /targets/{id}
-targetByIdResource.addMethod(
-  'GET',
-  crudIntegration
-);
-
-// PUT /targets/{id}
-targetByIdResource.addMethod(
-  'PUT',
-  crudIntegration
-);
-
-// DELETE /targets/{id}
-targetByIdResource.addMethod(
-  'DELETE',
-  crudIntegration
-);
-
-// Display API endpoint after deployment
-this.crudApiUrlOutput = new cdk.CfnOutput(
-  this,
-  'WebCrawlerCrudApiUrl',
-  {
-    value: `${crudApi.url}targets`,
-    description: 'Web Crawler CRUD API endpoint',
-  }
-);
-
-    // ------------------------------------------------------------
-    // Lambda Function
-    // ------------------------------------------------------------
-
-    const websiteMonitor = new lambda.Function(
+    const targetTable = new dynamodb.Table(
       this,
-      'HelloLambdaFunction',
+      'WebCrawlerTargetTable',
+      {
+        tableName: `${resourcePrefix}-WebCrawler-Targets`,
+
+        partitionKey: {
+          name: 'id',
+          type: dynamodb.AttributeType.STRING,
+        },
+
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+
+        removalPolicy: dataRemovalPolicy,
+      }
+    );
+
+
+    // ============================================================
+    // 2. CRUD LAMBDA
+    // ============================================================
+
+    const crudFunction = new lambda.Function(
+      this,
+      'WebCrawlerCrudFunction',
       {
         runtime: lambda.Runtime.PYTHON_3_12,
-        handler: 'index.lambda_handler',
-        timeout: cdk.Duration.seconds(30),
+        handler: 'crud.lambda_handler',
+
         code: lambda.Code.fromAsset('lambda'),
+
+        timeout: cdk.Duration.seconds(30),
+
         environment: {
           TABLE_NAME: targetTable.tableName,
         },
       }
     );
 
+    // Grant CRUD Lambda access to its DynamoDB table.
+    targetTable.grantReadWriteData(crudFunction);
+
+
+    // ============================================================
+    // 3. API GATEWAY ACCESS LOGGING
+    // ============================================================
+
+    const apiAccessLogs = new logs.LogGroup(
+      this,
+      'WebCrawlerApiAccessLogs',
+      {
+        logGroupName:
+          `${resourcePrefix}-WebCrawler-ApiAccess`,
+
+        retention: logs.RetentionDays.ONE_WEEK,
+
+        removalPolicy: dataRemovalPolicy,
+      }
+    );
+
+
+    // ============================================================
+    // 4. PUBLIC API GATEWAY
+    // ============================================================
+
+    const crudApi = new apigateway.RestApi(
+      this,
+      'WebCrawlerCrudApi',
+      {
+        restApiName:
+          `${resourcePrefix}-WebCrawler-API`,
+
+        description:
+          'Public CRUD REST API for Web Health crawler targets',
+
+        endpointTypes: [
+          apigateway.EndpointType.REGIONAL,
+        ],
+
+        // Public API for the coursework requirement.
+        // No API key or authentication is required.
+        defaultMethodOptions: {
+          authorizationType:
+            apigateway.AuthorizationType.NONE,
+        },
+
+        // CORS configuration.
+        defaultCorsPreflightOptions: {
+          allowOrigins: apigateway.Cors.ALL_ORIGINS,
+
+          allowMethods: [
+            'GET',
+            'POST',
+            'PUT',
+            'DELETE',
+            'OPTIONS',
+          ],
+
+          allowHeaders: [
+            'Content-Type',
+          ],
+        },
+
+        // API Gateway stage configuration.
+        deployOptions: {
+
+          stageName: 'prod',
+
+          // Limit excessive requests.
+          throttlingRateLimit: 5,
+          throttlingBurstLimit: 10,
+
+          // CloudWatch API metrics.
+          metricsEnabled: true,
+
+          // Log requests without request body contents.
+          accessLogDestination:
+            new apigateway.LogGroupLogDestination(
+              apiAccessLogs
+            ),
+
+          accessLogFormat:
+            apigateway.AccessLogFormat.jsonWithStandardFields(),
+        },
+      }
+    );
+
+
+    // ============================================================
+    // 5. API GATEWAY - LAMBDA INTEGRATION
+    // ============================================================
+
+    const crudIntegration =
+      new apigateway.LambdaIntegration(
+        crudFunction
+      );
+
+
+    // ============================================================
+    // 6. CRUD REST ENDPOINTS
+    // ============================================================
+
+    // /targets
+    const targetsResource =
+      crudApi.root.addResource('targets');
+
+    // POST /targets
+    targetsResource.addMethod(
+      'POST',
+      crudIntegration
+    );
+
+    // GET /targets
+    targetsResource.addMethod(
+      'GET',
+      crudIntegration
+    );
+
+    // /targets/{id}
+    const targetByIdResource =
+      targetsResource.addResource('{id}');
+
+    // GET /targets/{id}
+    targetByIdResource.addMethod(
+      'GET',
+      crudIntegration
+    );
+
+    // PUT /targets/{id}
+    targetByIdResource.addMethod(
+      'PUT',
+      crudIntegration
+    );
+
+    // DELETE /targets/{id}
+    targetByIdResource.addMethod(
+      'DELETE',
+      crudIntegration
+    );
+
+
+    // ============================================================
+    // 7. OUTPUT - CRUD API URL
+    // ============================================================
+
+    this.crudApiUrlOutput = new cdk.CfnOutput(
+      this,
+      'WebCrawlerCrudApiUrl',
+      {
+        value: `${crudApi.url}targets`,
+
+        description:
+          'Web Crawler CRUD API endpoint',
+      }
+    );
+
+
+    // ============================================================
+    // 8. WEB HEALTH MONITORING LAMBDA
+    // ============================================================
+
+    const websiteMonitor = new lambda.Function(
+      this,
+      'HelloLambdaFunction',
+      {
+        runtime: lambda.Runtime.PYTHON_3_12,
+
+        handler: 'index.lambda_handler',
+
+        timeout: cdk.Duration.seconds(30),
+
+        code: lambda.Code.fromAsset('lambda'),
+
+        environment: {
+          TABLE_NAME: targetTable.tableName,
+        },
+      }
+    );
+
+    // Allow the monitoring Lambda to read targets.
     targetTable.grantReadData(websiteMonitor);
-// ------------------------------------------------------------
-// Week 11 - Production Lambda Alias for Canary Deployment
-// ------------------------------------------------------------
 
-let monitorTarget: lambda.IFunction = websiteMonitor;
-let prodAlias: lambda.Alias | undefined;
 
-if (environmentName === 'Prod') {
-  prodAlias = new lambda.Alias(
-    this,
-    'ProdAlias',
-    {
-      aliasName: 'live',
-      version: websiteMonitor.currentVersion,
+    // ============================================================
+    // 9. PRODUCTION LAMBDA ALIAS
+    // ============================================================
+
+    let monitorTarget: lambda.IFunction = websiteMonitor;
+
+    let prodAlias: lambda.Alias | undefined;
+
+    if (isProduction) {
+
+      prodAlias = new lambda.Alias(
+        this,
+        'ProdAlias',
+        {
+          aliasName: 'live',
+
+          version: websiteMonitor.currentVersion,
+        }
+      );
+
+      monitorTarget = prodAlias;
     }
-  );
 
-  monitorTarget = prodAlias;
-}
-// ------------------------------------------------------------
-// Week 11 - Operational CloudWatch Metrics and Alarms
-// ------------------------------------------------------------
 
-let prodErrorAlarm: cloudwatch.Alarm | undefined;
-let prodDurationAlarm: cloudwatch.Alarm | undefined;
-let prodInvocationAlarm: cloudwatch.Alarm | undefined;
+    // ============================================================
+    // 10. PRODUCTION OPERATIONAL METRICS
+    // ============================================================
 
-if (environmentName === 'Prod' && prodAlias) {
+    let prodErrorAlarm: cloudwatch.Alarm | undefined;
 
-  // Lambda invocation count
-  const invocationMetric = prodAlias.metricInvocations({
-    period: cdk.Duration.minutes(5),
-    statistic: 'Sum',
-  });
+    let prodDurationAlarm: cloudwatch.Alarm | undefined;
 
-  // Lambda execution duration
-  const durationMetric = prodAlias.metricDuration({
-    period: cdk.Duration.minutes(5),
-    statistic: 'Average',
-  });
+    if (isProduction && prodAlias) {
 
-  // Lambda execution errors
-  const errorMetric = prodAlias.metricErrors({
-    period: cdk.Duration.minutes(5),
-    statistic: 'Sum',
-  });
+      const invocationMetric =
+        prodAlias.metricInvocations({
+          period: cdk.Duration.minutes(5),
+          statistic: 'Sum',
+        });
 
-  // Alarm if there are no invocations for 1 hour
-  prodInvocationAlarm = new cloudwatch.Alarm(
-    this,
-    'ProdInvocationAlarm',
-    {
-      alarmName: 'Prod-WebHealth-No-Invocations',
-      metric: invocationMetric,
-      threshold: 1,
-      evaluationPeriods: 12,
-      datapointsToAlarm: 12,
-      comparisonOperator:
-        cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
-      treatMissingData:
-        cloudwatch.TreatMissingData.BREACHING,
-      alarmDescription:
-        'Alarm when the Production Lambda receives no invocations for one hour',
+      const durationMetric =
+        prodAlias.metricDuration({
+          period: cdk.Duration.minutes(5),
+          statistic: 'Average',
+        });
+
+      const errorMetric =
+        prodAlias.metricErrors({
+          period: cdk.Duration.minutes(5),
+          statistic: 'Sum',
+        });
+
+
+      // ----------------------------------------------------------
+      // Alarm: No Lambda invocations for one hour
+      // ----------------------------------------------------------
+
+      new cloudwatch.Alarm(
+        this,
+        'ProdInvocationAlarm',
+        {
+          alarmName:
+            'Prod-WebHealth-No-Invocations',
+
+          metric: invocationMetric,
+
+          threshold: 1,
+
+          evaluationPeriods: 12,
+
+          datapointsToAlarm: 12,
+
+          comparisonOperator:
+            cloudwatch.ComparisonOperator
+              .LESS_THAN_THRESHOLD,
+
+          treatMissingData:
+            cloudwatch.TreatMissingData.BREACHING,
+
+          alarmDescription:
+            'Production Lambda received no invocations for one hour',
+        }
+      );
+
+
+      // ----------------------------------------------------------
+      // Alarm: High Lambda duration
+      // ----------------------------------------------------------
+
+      prodDurationAlarm = new cloudwatch.Alarm(
+        this,
+        'ProdDurationAlarm',
+        {
+          alarmName:
+            'Prod-WebHealth-High-Duration',
+
+          metric: durationMetric,
+
+          threshold: 10000,
+
+          evaluationPeriods: 1,
+
+          datapointsToAlarm: 1,
+
+          comparisonOperator:
+            cloudwatch.ComparisonOperator
+              .GREATER_THAN_THRESHOLD,
+
+          treatMissingData:
+            cloudwatch.TreatMissingData.NOT_BREACHING,
+
+          alarmDescription:
+            'Production Lambda average duration exceeds 10 seconds',
+        }
+      );
+
+
+      // ----------------------------------------------------------
+      // Alarm: Lambda execution errors
+      // ----------------------------------------------------------
+
+      prodErrorAlarm = new cloudwatch.Alarm(
+        this,
+        'ProdErrorAlarm',
+        {
+          alarmName:
+            'Prod-WebHealth-Lambda-Errors',
+
+          metric: errorMetric,
+
+          threshold: 1,
+
+          evaluationPeriods: 1,
+
+          datapointsToAlarm: 1,
+
+          comparisonOperator:
+            cloudwatch.ComparisonOperator
+              .GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+
+          treatMissingData:
+            cloudwatch.TreatMissingData.NOT_BREACHING,
+
+          alarmDescription:
+            'Production Lambda execution error detected',
+        }
+      );
     }
-  );
 
-  // Alarm when average processing time exceeds 10 seconds
-  prodDurationAlarm = new cloudwatch.Alarm(
-    this,
-    'ProdDurationAlarm',
-    {
-      alarmName: 'Prod-WebHealth-High-Duration',
-      metric: durationMetric,
-      threshold: 10000,
-      evaluationPeriods: 1,
-      datapointsToAlarm: 1,
-      comparisonOperator:
-        cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-      treatMissingData:
-        cloudwatch.TreatMissingData.NOT_BREACHING,
-      alarmDescription:
-        'Alarm when Production Lambda average duration exceeds 10 seconds',
-    }
-  );
 
-  // Alarm if the Lambda produces any execution error
-  prodErrorAlarm = new cloudwatch.Alarm(
-    this,
-    'ProdErrorAlarm',
-    {
-      alarmName: 'Prod-WebHealth-Lambda-Errors',
-      metric: errorMetric,
-      threshold: 1,
-      evaluationPeriods: 1,
-      datapointsToAlarm: 1,
-      comparisonOperator:
-        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-      treatMissingData:
-        cloudwatch.TreatMissingData.NOT_BREACHING,
-      alarmDescription:
-        'Alarm when the Production Lambda produces an execution error',
-    }
-  );
-}
-// ------------------------------------------------------------
-// ------------------------------------------------------------
+    // ============================================================
+    // 11. PRODUCTION AUTOMATIC ROLLBACK
+    // ============================================================
 
-// Week 11 - Automatic Rollback Without CodeDeploy
-// Free-plan compatible fallback
-// ------------------------------------------------------------
+    if (
+      isProduction &&
+      prodAlias &&
+      prodErrorAlarm &&
+      prodDurationAlarm
+    ) {
 
-if (
-  environmentName === 'Prod' &&
-  prodAlias &&
-  prodErrorAlarm &&
-  prodDurationAlarm
-) {
-  const rollbackFunction = new lambda.Function(
-    this,
-    'ProdRollbackFunction',
-    {
-      runtime: lambda.Runtime.PYTHON_3_12,
-      handler: 'index.lambda_handler',
-      timeout: cdk.Duration.seconds(30),
+      const rollbackFunction = new lambda.Function(
+        this,
+        'ProdRollbackFunction',
+        {
+          runtime: lambda.Runtime.PYTHON_3_12,
 
-      environment: {
-        FUNCTION_NAME: websiteMonitor.functionName,
-        ALIAS_NAME: 'live',
-      },
+          handler: 'index.lambda_handler',
 
-      code: lambda.Code.fromInline(`
+          timeout: cdk.Duration.seconds(30),
+
+          environment: {
+            FUNCTION_NAME: websiteMonitor.functionName,
+            ALIAS_NAME: 'live',
+          },
+
+          code: lambda.Code.fromInline(`
 import os
 import boto3
 
@@ -315,6 +459,7 @@ lambda_client = boto3.client("lambda")
 
 
 def lambda_handler(event, context):
+
     function_name = os.environ["FUNCTION_NAME"]
     alias_name = os.environ["ALIAS_NAME"]
 
@@ -336,7 +481,9 @@ def lambda_handler(event, context):
         Name=alias_name
     )
 
-    current_version = int(alias["FunctionVersion"])
+    current_version = int(
+        alias["FunctionVersion"]
+    )
 
     response = lambda_client.list_versions_by_function(
         FunctionName=function_name
@@ -360,7 +507,9 @@ def lambda_handler(event, context):
             "reason": "No previous Lambda version exists"
         }
 
-    previous_version = str(max(previous_versions))
+    previous_version = str(
+        max(previous_versions)
+    )
 
     lambda_client.update_alias(
         FunctionName=function_name,
@@ -375,65 +524,85 @@ def lambda_handler(event, context):
         "to_version": previous_version
     }
 `),
-    }
-  );
+        }
+      );
 
-  // Permission for rollback Lambda
-  rollbackFunction.addToRolePolicy(
-    new iam.PolicyStatement({
-      actions: [
-        'lambda:GetAlias',
-        'lambda:ListVersionsByFunction',
-        'lambda:UpdateAlias',
-      ],
-      resources: [
-        websiteMonitor.functionArn,
-        `${websiteMonitor.functionArn}:*`,
-      ],
-    })
-  );
 
-  // Trigger rollback when Production health alarms enter ALARM
-  const rollbackRule = new events.Rule(
-    this,
-    'ProdAutomaticRollbackRule',
-    {
-      eventPattern: {
-        source: ['aws.cloudwatch'],
-        detailType: ['CloudWatch Alarm State Change'],
-        detail: {
-          alarmName: [
-            prodErrorAlarm.alarmName,
-            prodDurationAlarm.alarmName,
+      // Permissions for rollback Lambda.
+      rollbackFunction.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: [
+            'lambda:GetAlias',
+            'lambda:ListVersionsByFunction',
+            'lambda:UpdateAlias',
           ],
-          state: {
-            value: ['ALARM'],
-          },
-        },
-      },
-    }
-  );
 
-  rollbackRule.addTarget(
-    new targets.LambdaFunction(rollbackFunction)
-  );
-}
-    // ------------------------------------------------------------
-    // IAM Permission
-    // Allow Lambda to publish custom CloudWatch metrics
-    // ------------------------------------------------------------
+          resources: [
+            websiteMonitor.functionArn,
+            `${websiteMonitor.functionArn}:*`,
+          ],
+        })
+      );
+
+
+      // Trigger rollback on Production alarms.
+      const rollbackRule = new events.Rule(
+        this,
+        'ProdAutomaticRollbackRule',
+        {
+          eventPattern: {
+            source: [
+              'aws.cloudwatch',
+            ],
+
+            detailType: [
+              'CloudWatch Alarm State Change',
+            ],
+
+            detail: {
+              alarmName: [
+                prodErrorAlarm.alarmName,
+                prodDurationAlarm.alarmName,
+              ],
+
+              state: {
+                value: [
+                  'ALARM',
+                ],
+              },
+            },
+          },
+        }
+      );
+
+      rollbackRule.addTarget(
+        new targets.LambdaFunction(
+          rollbackFunction
+        )
+      );
+    }
+
+
+    // ============================================================
+    // 12. IAM - CLOUDWATCH METRIC PERMISSIONS
+    // ============================================================
 
     websiteMonitor.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['cloudwatch:PutMetricData'],
-        resources: ['*'],
+        actions: [
+          'cloudwatch:PutMetricData',
+        ],
+
+        resources: [
+          '*',
+        ],
       })
     );
 
-    // ------------------------------------------------------------
-    // EventBridge Schedule
-    // Run Lambda every 30 minutes
-    // ------------------------------------------------------------
+
+    // ============================================================
+    // 13. EVENTBRIDGE SCHEDULE
+    // ============================================================
 
     const scheduleRule = new events.Rule(
       this,
@@ -446,12 +615,15 @@ def lambda_handler(event, context):
     );
 
     scheduleRule.addTarget(
-      new targets.LambdaFunction(monitorTarget)
+      new targets.LambdaFunction(
+        monitorTarget
+      )
     );
 
-    // ------------------------------------------------------------
-    // Websites
-    // ------------------------------------------------------------
+
+    // ============================================================
+    // 14. MONITORED WEBSITES
+    // ============================================================
 
     const websites = [
       {
@@ -468,221 +640,288 @@ def lambda_handler(event, context):
       },
     ];
 
-    // ------------------------------------------------------------
-    // CloudWatch Metrics
-    // ------------------------------------------------------------
 
-    const availabilityMetrics = websites.map((website) =>
-      new cloudwatch.Metric({
-        namespace: 'WSU2026/WebHealth',
-        metricName: 'Availability',
-        dimensionsMap: {
-          Website: website.url,
-        },
-        statistic: 'Average',
-        period: cdk.Duration.minutes(30),
-      })
+    // ============================================================
+    // 15. CLOUDWATCH AVAILABILITY METRICS
+    // ============================================================
+
+    const availabilityMetrics = websites.map(
+      (website) =>
+        new cloudwatch.Metric({
+          namespace: 'WSU2026/WebHealth',
+
+          metricName: 'Availability',
+
+          dimensionsMap: {
+            Website: website.url,
+          },
+
+          statistic: 'Average',
+
+          period: cdk.Duration.minutes(30),
+        })
     );
 
-    const latencyMetrics = websites.map((website) =>
-      new cloudwatch.Metric({
-        namespace: 'WSU2026/WebHealth',
-        metricName: 'Latency',
-        dimensionsMap: {
-          Website: website.url,
-        },
-        statistic: 'Average',
-        unit: cloudwatch.Unit.MILLISECONDS,
-        period: cdk.Duration.minutes(30),
-      })
+
+    // ============================================================
+    // 16. CLOUDWATCH LATENCY METRICS
+    // ============================================================
+
+    const latencyMetrics = websites.map(
+      (website) =>
+        new cloudwatch.Metric({
+          namespace: 'WSU2026/WebHealth',
+
+          metricName: 'Latency',
+
+          dimensionsMap: {
+            Website: website.url,
+          },
+
+          statistic: 'Average',
+
+          unit: cloudwatch.Unit.MILLISECONDS,
+
+          period: cdk.Duration.minutes(30),
+        })
     );
 
-    // ------------------------------------------------------------
-    // CloudWatch Dashboard
-    // ------------------------------------------------------------
+
+    // ============================================================
+    // 17. CLOUDWATCH DASHBOARD
+    // ============================================================
 
     const dashboard = new cloudwatch.Dashboard(
       this,
       'WebHealthDashboard',
       {
-  dashboardName: `${resourcePrefix}-WebHealth-Dashboard-CDK`,
+        dashboardName:
+          `${resourcePrefix}-WebHealth-Dashboard-CDK`,
       }
     );
 
-    const availabilityWidget = new cloudwatch.GraphWidget({
-      title: 'Website Availability',
-      left: availabilityMetrics,
-      width: 24,
-      height: 8,
-      leftYAxis: {
-        min: 0,
-        max: 1,
-      },
-    });
 
-    const latencyWidget = new cloudwatch.GraphWidget({
-      title: 'Website Latency',
-      left: latencyMetrics,
-      width: 24,
-      height: 8,
-    });
+    const availabilityWidget =
+      new cloudwatch.GraphWidget({
+        title: 'Website Availability',
+
+        left: availabilityMetrics,
+
+        width: 24,
+        height: 8,
+
+        leftYAxis: {
+          min: 0,
+          max: 1,
+        },
+      });
+
+
+    const latencyWidget =
+      new cloudwatch.GraphWidget({
+        title: 'Website Latency',
+
+        left: latencyMetrics,
+
+        width: 24,
+        height: 8,
+      });
+
 
     dashboard.addWidgets(
       availabilityWidget,
       latencyWidget
     );
 
-    // ------------------------------------------------------------
-    // SNS Topic
-    // Used by CloudWatch alarms for notifications
-    // ------------------------------------------------------------
+
+    // ============================================================
+    // 18. SNS ALARM NOTIFICATIONS
+    // ============================================================
 
     const alarmTopic = new sns.Topic(
       this,
       'WebHealthAlarmTopic',
       {
-topicName: `${resourcePrefix}-WebHealth-Alarms`,
-displayName: `${resourcePrefix} Web Health Alarm Notifications`,
+        topicName:
+          `${resourcePrefix}-WebHealth-Alarms`,
+
+        displayName:
+          `${resourcePrefix} Web Health Alarm Notifications`,
       }
     );
 
+
     alarmTopic.addSubscription(
-  new subscriptions.EmailSubscription('22222784@student.westernsydney.edu.au')
-);
+      new subscriptions.EmailSubscription(
+        '22222784@student.westernsydney.edu.au'
+      )
+    );
 
 
-// ------------------------------------------------------------
-// DynamoDB Table for Alarm Logs
-// ------------------------------------------------------------
+    // ============================================================
+    // 19. DYNAMODB - ALARM LOG TABLE
+    // ============================================================
 
-const alarmLogTable = new dynamodb.Table(
-  this,
-  'WebHealthAlarmLogTable',
-  {
-tableName: `${resourcePrefix}-WebHealth-AlarmLogs`,
+    const alarmLogTable = new dynamodb.Table(
+      this,
+      'WebHealthAlarmLogTable',
+      {
+        tableName:
+          `${resourcePrefix}-WebHealth-AlarmLogs`,
 
-    partitionKey: {
-      name: 'alarmId',
-      type: dynamodb.AttributeType.STRING,
-    },
+        partitionKey: {
+          name: 'alarmId',
+          type: dynamodb.AttributeType.STRING,
+        },
 
-    billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        billingMode:
+          dynamodb.BillingMode.PAY_PER_REQUEST,
 
-    removalPolicy: cdk.RemovalPolicy.DESTROY,
-  }
-);
+        removalPolicy: dataRemovalPolicy,
+      }
+    );
 
-// ------------------------------------------------------------
-// Lambda Function for Logging Alarm State Changes
-// ------------------------------------------------------------
 
-const alarmLogger = new lambda.Function(
-  this,
-  'AlarmLoggerFunction',
-  {
-    runtime: lambda.Runtime.PYTHON_3_12,
-    handler: 'index.lambda_handler',
-    code: lambda.Code.fromAsset('alarm-logger'),
-    environment: {
-      TABLE_NAME: alarmLogTable.tableName,
-    },
-  }
-);
+    // ============================================================
+    // 20. LAMBDA - ALARM LOGGER
+    // ============================================================
 
-alarmLogTable.grantWriteData(alarmLogger);
+    const alarmLogger = new lambda.Function(
+      this,
+      'AlarmLoggerFunction',
+      {
+        runtime: lambda.Runtime.PYTHON_3_12,
 
-// ------------------------------------------------------------
-// EventBridge Rule for CloudWatch Alarm State Changes
-// ------------------------------------------------------------
+        handler: 'index.lambda_handler',
 
-const alarmStateChangeRule = new events.Rule(
-  this,
-  'AlarmStateChangeRule',
-  {
-    eventPattern: {
-      source: ['aws.cloudwatch'],
-      detailType: ['CloudWatch Alarm State Change'],
-    },
-  }
-);
+        code: lambda.Code.fromAsset(
+          'alarm-logger'
+        ),
 
-alarmStateChangeRule.addTarget(
-  new targets.LambdaFunction(alarmLogger)
-);
-    // ------------------------------------------------------------
-    // Availability Alarms
-    // Alarm when Availability < 1
-    // ------------------------------------------------------------
+        environment: {
+          TABLE_NAME: alarmLogTable.tableName,
+        },
+      }
+    );
+
+
+    alarmLogTable.grantWriteData(
+      alarmLogger
+    );
+
+
+    // ============================================================
+    // 21. EVENTBRIDGE - ALARM STATE CHANGES
+    // ============================================================
+
+    const alarmStateChangeRule = new events.Rule(
+      this,
+      'AlarmStateChangeRule',
+      {
+        eventPattern: {
+          source: [
+            'aws.cloudwatch',
+          ],
+
+          detailType: [
+            'CloudWatch Alarm State Change',
+          ],
+        },
+      }
+    );
+
+
+    alarmStateChangeRule.addTarget(
+      new targets.LambdaFunction(
+        alarmLogger
+      )
+    );
+
+
+    // ============================================================
+    // 22. WEBSITE AVAILABILITY ALARMS
+    // ============================================================
 
     websites.forEach((website, index) => {
-      const availabilityAlarm = new cloudwatch.Alarm(
-        this,
-        `${website.name}AvailabilityAlarm`,
-        {
-          metric: availabilityMetrics[index],
 
-          threshold: 1,
+      const availabilityAlarm =
+        new cloudwatch.Alarm(
+          this,
+          `${website.name}AvailabilityAlarm`,
+          {
+            metric: availabilityMetrics[index],
 
-          evaluationPeriods: 1,
+            threshold: 1,
 
-          datapointsToAlarm: 1,
+            evaluationPeriods: 1,
 
-          comparisonOperator:
-            cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+            datapointsToAlarm: 1,
 
-          treatMissingData:
-            cloudwatch.TreatMissingData.MISSING,
+            comparisonOperator:
+              cloudwatch.ComparisonOperator
+                .LESS_THAN_THRESHOLD,
 
-          alarmName:
-  `${alarmPrefix}${website.name}-Availability-Alarm-CDK`,
+            treatMissingData:
+              cloudwatch.TreatMissingData.MISSING,
 
-          alarmDescription:
-            `Alarm when ${website.name} availability falls below 1`,
-        }
-      );
+            alarmName:
+              `${alarmPrefix}${website.name}-Availability-Alarm-CDK`,
 
-      // Send alarm notification to SNS
+            alarmDescription:
+              `Alarm when ${website.name} availability falls below 1`,
+          }
+        );
+
+
       availabilityAlarm.addAlarmAction(
-        new cloudwatchActions.SnsAction(alarmTopic)
+        new cloudwatchActions.SnsAction(
+          alarmTopic
+        )
       );
     });
 
-    // ------------------------------------------------------------
-    // Latency Alarms
-    // Alarm when Latency > 1000 milliseconds
-    // ------------------------------------------------------------
+
+    // ============================================================
+    // 23. WEBSITE LATENCY ALARMS
+    // ============================================================
 
     websites.forEach((website, index) => {
-      const latencyAlarm = new cloudwatch.Alarm(
-        this,
-        `${website.name}LatencyAlarm`,
-        {
-          metric: latencyMetrics[index],
 
-          threshold: 1000,
+      const latencyAlarm =
+        new cloudwatch.Alarm(
+          this,
+          `${website.name}LatencyAlarm`,
+          {
+            metric: latencyMetrics[index],
 
-          evaluationPeriods: 1,
+            threshold: 1000,
 
-          datapointsToAlarm: 1,
+            evaluationPeriods: 1,
 
-          comparisonOperator:
-            cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            datapointsToAlarm: 1,
 
-          treatMissingData:
-            cloudwatch.TreatMissingData.MISSING,
+            comparisonOperator:
+              cloudwatch.ComparisonOperator
+                .GREATER_THAN_THRESHOLD,
 
-alarmName:
-  `${alarmPrefix}${website.name}-Latency-Alarm-CDK`,
+            treatMissingData:
+              cloudwatch.TreatMissingData.MISSING,
 
-          alarmDescription:
-            `Alarm when ${website.name} latency exceeds 1000 milliseconds`,
-        }
-      );
+            alarmName:
+              `${alarmPrefix}${website.name}-Latency-Alarm-CDK`,
 
-      // Send alarm notification to SNS
+            alarmDescription:
+              `Alarm when ${website.name} latency exceeds 1000 milliseconds`,
+          }
+        );
+
+
       latencyAlarm.addAlarmAction(
-        new cloudwatchActions.SnsAction(alarmTopic)
+        new cloudwatchActions.SnsAction(
+          alarmTopic
+        )
       );
     });
+
   }
 }
