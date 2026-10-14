@@ -269,7 +269,6 @@ def lambda_handler(event, context):
         return response(
             500,
             {
-                "message": "Internal server error",
-                "error": str(error)
+                "message": "Internal server error"
             }
         )
