@@ -2,6 +2,7 @@ import urllib.request
 import time
 import json
 import boto3
+import os
 
 cloudwatch = boto3.client("cloudwatch")
 
@@ -12,10 +13,40 @@ websites = [
 ]
 
 
+def get_websites():
+    """Load enabled crawler targets; preserve original defaults for empty tables."""
+    table_name = os.environ.get("TABLE_NAME")
+    if not table_name:
+        return websites
+
+    table = boto3.resource("dynamodb").Table(table_name)
+    urls = []
+    scan_kwargs = {}
+    try:
+        while True:
+            result = table.scan(**scan_kwargs)
+            urls.extend(
+                item["url"] for item in result.get("Items", [])
+                if item.get("enabled", True) is True
+                and isinstance(item.get("url"), str)
+                and item["url"].startswith(("https://", "http://"))
+            )
+            last_key = result.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            scan_kwargs["ExclusiveStartKey"] = last_key
+    except Exception:
+        # Preserve availability monitoring if DynamoDB is temporarily unreachable.
+        print("Unable to retrieve crawler targets; using default websites")
+        return websites
+
+    return list(dict.fromkeys(urls)) if result.get("Count", 0) or urls else websites
+
+
 def lambda_handler(event, context):
     results = []
 
-    for website in websites:
+    for website in get_websites():
         start = time.time()
 
         try:
