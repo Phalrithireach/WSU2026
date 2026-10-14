@@ -7,6 +7,8 @@ export interface WebHealthStageProps extends cdk.StageProps {
 }
 
 export class WebHealthStage extends cdk.Stage {
+  public readonly webHealthStack: HelloLambdaCdkStack;
+
   constructor(
     scope: Construct,
     id: string,
@@ -14,7 +16,7 @@ export class WebHealthStage extends cdk.Stage {
   ) {
     super(scope, id, props);
 
-    new HelloLambdaCdkStack(
+    this.webHealthStack = new HelloLambdaCdkStack(
       this,
       'WebHealthStack',
       {
