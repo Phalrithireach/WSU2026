@@ -116,6 +116,11 @@ export class PipelineStack extends cdk.Stack {
         {
           input: source,
 
+          // Test the freshly deployed BetaGamma endpoint, not old Production code.
+          envFromCfnOutputs: {
+            WEB_CRAWLER_API_URL: betaGammaStage.crudApiUrlOutput,
+          },
+
           commands: [
             'cd hello-lambda-cdk',
             'python3 -m pip install -r requirements-dev.txt',

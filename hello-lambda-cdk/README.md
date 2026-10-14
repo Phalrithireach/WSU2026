@@ -353,7 +353,7 @@ Current status:
 ```text
 Todo: 0
 In Progress: 0
-Done: 9
+Done: 30 (as shown in the GitHub Project on 14 October 2026)
 ```
 
 Completed items:
@@ -367,6 +367,8 @@ Completed items:
 7. Runbook Documentation
 8. SNS Alarm Notifications
 9. DynamoDB Alarm Logging
+
+Six additional Applied Project issues (#1–#6) track the DynamoDB target table, CRUD Lambda, API Gateway endpoints, CRUD tests, CI/CD integration, and documentation. All six are closed and marked Done.
 
 ---
 
@@ -1707,6 +1709,33 @@ hello-lambda-cdk/
 ├── README.md
 └── RUNBOOK.md
 ```
+
+---
+
+## Quality Characteristics and Limitations
+
+### Security
+- The CRUD Lambda receives DynamoDB read/write permissions on its target table via AWS CDK.
+- The API is intentionally public for the assessment; it does not authenticate callers. It must not be used for sensitive or production workloads without authentication, request validation, throttling, and access controls.
+- Production pipeline deployment requires a manual approval action.
+- Error responses currently contain internal exception messages in some failure scenarios; redact those messages before exposing a production API.
+
+### Performance
+- CRUD responses contain `dynamodb_read_ms` or `dynamodb_write_ms`, measured using `time.perf_counter()`.
+- DynamoDB uses on-demand capacity. These timings measure SDK operation latency, not full end-to-end client-to-API latency.
+- GET /targets currently uses a single Scan request; large target lists would require pagination.
+
+### Reliability and Testing
+- The project includes Python unit, functional and integration tests and an AWS CDK infrastructure test.
+- CI/CD uses BetaGamma testing, an integration-test gate, and manual Production approval.
+- The Production monitoring Lambda has a versioned `live` alias and an alarm-driven rollback handler; the EventBridge schedule must target the alias for rollback to control scheduled invocations.
+- The integration-test gate must use the newly deployed BetaGamma endpoint, rather than an older Production deployment.
+- DynamoDB tables currently use CDK DESTROY removal policies; retaining tables and enabling recovery safeguards should be considered for persistent production data.
+
+### Usability
+- CRUD resources are exposed through `/targets` and `/targets/{id}` with standard HTTP methods.
+- `API_DOCUMENTATION.md` includes request and response examples.
+- The API currently manages a separate DynamoDB target list; the scheduled monitoring Lambda still checks three hard-coded websites. Connecting the crawler to the configured target list remains required for fully dynamic monitoring.
 
 ---
 

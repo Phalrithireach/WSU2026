@@ -1,4 +1,6 @@
 import json
+import os
+import uuid
 import urllib.request
 import urllib.error
 
@@ -120,12 +122,14 @@ def test_live_checks_publish_metrics(lambda_module):
 # ---------------------------------------------------------
 
 def test_live_crud_api():
-    base_url = (
-        "https://wuyes58ng1.execute-api."
-        "ap-southeast-2.amazonaws.com/prod"
-    )
+    # Pipeline checks BetaGamma using a CloudFormation-provided endpoint.
+    # Local runs can override the URL with WEB_CRAWLER_API_URL.
+    base_url = os.environ.get(
+        "WEB_CRAWLER_API_URL",
+        "https://wuyes58ng1.execute-api.ap-southeast-2.amazonaws.com/prod",
+    ).rstrip("/")
 
-    target_id = "integration-test"
+    target_id = f"integration-test-{uuid.uuid4().hex[:12]}"
     target_url = f"{base_url}/targets/{target_id}"
 
     # -----------------------------------------------------
