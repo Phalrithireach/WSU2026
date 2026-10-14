@@ -320,3 +320,30 @@ def test_crud_get_returns_target(crud_module):
             "id": "google"
         }
     )
+
+# Applied Project: verify that the monitoring target list is driven by DynamoDB.
+def test_monitor_loads_enabled_targets_from_dynamodb(lambda_module, monkeypatch):
+    module, _ = lambda_module
+    monkeypatch.setenv("TABLE_NAME", "TestWebCrawlerTargets")
+    table = MagicMock()
+    table.scan.return_value = {
+        "Items": [
+            {"id": "example", "url": "https://example.com", "enabled": True},
+            {"id": "disabled", "url": "https://disabled.example", "enabled": False},
+        ],
+    }
+    module.boto3.resource = MagicMock()
+    module.boto3.resource.return_value.Table.return_value = table
+
+    assert module.get_websites() == ["https://example.com"]
+
+
+def test_monitor_defaults_when_target_table_is_empty(lambda_module, monkeypatch):
+    module, _ = lambda_module
+    monkeypatch.setenv("TABLE_NAME", "TestWebCrawlerTargets")
+    table = MagicMock()
+    table.scan.return_value = {"Items": []}
+    module.boto3.resource = MagicMock()
+    module.boto3.resource.return_value.Table.return_value = table
+
+    assert module.get_websites() == module.websites
