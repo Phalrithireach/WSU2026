@@ -170,8 +170,13 @@ this.crudApiUrlOutput = new cdk.CfnOutput(
         handler: 'index.lambda_handler',
         timeout: cdk.Duration.seconds(30),
         code: lambda.Code.fromAsset('lambda'),
+        environment: {
+          TABLE_NAME: targetTable.tableName,
+        },
       }
     );
+
+    targetTable.grantReadData(websiteMonitor);
 // ------------------------------------------------------------
 // Week 11 - Production Lambda Alias for Canary Deployment
 // ------------------------------------------------------------
