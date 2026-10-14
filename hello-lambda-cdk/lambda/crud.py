@@ -171,15 +171,22 @@ def lambda_handler(event, context):
 
             start = time.perf_counter()
 
-            result = table.update_item(
-                Key={
-                    "id": target_id
-                },
-                UpdateExpression="SET " + ", ".join(update_parts),
-                ExpressionAttributeNames=expression_names,
-                ExpressionAttributeValues=expression_values,
-                ReturnValues="ALL_NEW"
-            )
+            try:
+                result = table.update_item(
+                    Key={
+                        "id": target_id
+                    },
+                    UpdateExpression="SET " + ", ".join(update_parts),
+                    ExpressionAttributeNames=expression_names,
+                    ExpressionAttributeValues=expression_values,
+                    ConditionExpression="attribute_exists(id)",
+                    ReturnValues="ALL_NEW"
+                )
+            except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+                return response(
+                    404,
+                    {"message": "Target not found"}
+                )
 
             dynamodb_ms = round(
                 (time.perf_counter() - start) * 1000,
