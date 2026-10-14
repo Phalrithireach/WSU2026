@@ -347,3 +347,24 @@ def test_monitor_defaults_when_target_table_is_empty(lambda_module, monkeypatch)
     module.boto3.resource.return_value.Table.return_value = table
 
     assert module.get_websites() == module.websites
+
+
+def test_crud_put_missing_target_returns_404(crud_module):
+    module, fake_table = crud_module
+    error_type = (
+        module.dynamodb.meta.client.exceptions.ConditionalCheckFailedException
+    )
+    fake_table.update_item.side_effect = error_type()
+
+    event = {
+        "httpMethod": "PUT",
+        "pathParameters": {"id": "missing"},
+        "body": json.dumps({"enabled": False}),
+    }
+    result = module.lambda_handler(event, None)
+
+    assert result["statusCode"] == 404
+    assert json.loads(result["body"])["message"] == "Target not found"
+    assert fake_table.update_item.call_args.kwargs["ConditionExpression"] == (
+        "attribute_exists(id)"
+    )
