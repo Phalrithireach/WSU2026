@@ -21,10 +21,12 @@ def get_websites():
 
     table = boto3.resource("dynamodb").Table(table_name)
     urls = []
+    total_records = 0
     scan_kwargs = {}
     try:
         while True:
             result = table.scan(**scan_kwargs)
+            total_records += len(result.get("Items", []))
             urls.extend(
                 item["url"] for item in result.get("Items", [])
                 if item.get("enabled", True) is True
@@ -40,7 +42,7 @@ def get_websites():
         print("Unable to retrieve crawler targets; using default websites")
         return websites
 
-    return list(dict.fromkeys(urls)) if result.get("Count", 0) or urls else websites
+    return list(dict.fromkeys(urls)) if total_records else websites
 
 
 def lambda_handler(event, context):
