@@ -154,31 +154,23 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       }
     );
 
+   
     // ============================================================
-    // 5. API GATEWAY SECURITY
+    // API GATEWAY WRITE AUTHENTICATION
     // ============================================================
+    // BetaGamma and Production require AWS IAM authentication
+    // for POST, PUT and DELETE requests.
+    // Integration tests use AWS SigV4 request signing.
+    // GET requests remain publicly accessible.
 
-    // Production write operations require AWS IAM authorization.
-    //
-    // BetaGamma temporarily allows unauthenticated writes because
-    // the existing CodePipeline integration tests use urllib
-    // without AWS SigV4 request signing.
-    //
-    // TODO: Update integration tests with SigV4 signing and grant
-    // execute-api:Invoke to the test role, then enable IAM for
-    // BetaGamma as well.
-    //
-    // AWS_IAM requires the caller to sign requests and possess
-    // execute-api:Invoke permission. It is not an API key.
-
-    const writeAuthorization = isProduction
-      ? apigateway.AuthorizationType.IAM
-      : apigateway.AuthorizationType.NONE;
+    const writeAuthorization = apigateway.AuthorizationType.IAM;
 
     const writeMethodOptions: apigateway.MethodOptions = {
       authorizationType: writeAuthorization,
       apiKeyRequired: false,
     };
+
+
 
     // ============================================================
     // 6. LAMBDA INTEGRATION
