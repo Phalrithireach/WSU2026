@@ -13,14 +13,11 @@ import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as logs from 'aws-cdk-lib/aws-logs';
 
-
 export interface HelloLambdaCdkStackProps extends cdk.StackProps {
   environmentName?: string;
 }
 
-
 export class HelloLambdaCdkStack extends cdk.Stack {
-
   public readonly crudApiUrlOutput: cdk.CfnOutput;
 
   constructor(
@@ -42,14 +39,12 @@ export class HelloLambdaCdkStack extends cdk.Stack {
 
     const isProduction = environmentName === 'Prod';
 
-    // Preserve Production data if the stack is deleted.
     const dataRemovalPolicy = isProduction
       ? cdk.RemovalPolicy.RETAIN
       : cdk.RemovalPolicy.DESTROY;
 
-
     // ============================================================
-    // 1. DYNAMODB - WEB CRAWLER TARGET TABLE
+    // 1. DYNAMODB - WEBSITE TARGETS
     // ============================================================
 
     const targetTable = new dynamodb.Table(
@@ -57,18 +52,14 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       'WebCrawlerTargetTable',
       {
         tableName: `${resourcePrefix}-WebCrawler-Targets`,
-
         partitionKey: {
           name: 'id',
           type: dynamodb.AttributeType.STRING,
         },
-
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-
         removalPolicy: dataRemovalPolicy,
       }
     );
-
 
     // ============================================================
     // 2. CRUD LAMBDA
@@ -80,20 +71,15 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       {
         runtime: lambda.Runtime.PYTHON_3_12,
         handler: 'crud.lambda_handler',
-
         code: lambda.Code.fromAsset('lambda'),
-
         timeout: cdk.Duration.seconds(30),
-
         environment: {
           TABLE_NAME: targetTable.tableName,
         },
       }
     );
 
-    // Grant CRUD Lambda access to its DynamoDB table.
     targetTable.grantReadWriteData(crudFunction);
-
 
     // ============================================================
     // 3. API GATEWAY ACCESS LOGGING
@@ -103,42 +89,32 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       this,
       'WebCrawlerApiAccessLogs',
       {
-        logGroupName:
-          `${resourcePrefix}-WebCrawler-ApiAccess`,
-
+        logGroupName: `${resourcePrefix}-WebCrawler-ApiAccess`,
         retention: logs.RetentionDays.ONE_WEEK,
-
         removalPolicy: dataRemovalPolicy,
       }
     );
 
-
     // ============================================================
-    // 4. PUBLIC API GATEWAY
+    // 4. API GATEWAY
     // ============================================================
 
     const crudApi = new apigateway.RestApi(
       this,
       'WebCrawlerCrudApi',
       {
-        restApiName:
-          `${resourcePrefix}-WebCrawler-API`,
-
-        description:
-          'Public CRUD REST API for Web Health crawler targets',
+        restApiName: `${resourcePrefix}-WebCrawler-API`,
+        description: 'REST API for Web Health crawler targets',
 
         endpointTypes: [
           apigateway.EndpointType.REGIONAL,
         ],
 
-        // Public API for the coursework requirement.
-        // No API key or authentication is required.
+        // GET endpoints remain public.
         defaultMethodOptions: {
-          authorizationType:
-            apigateway.AuthorizationType.NONE,
+          authorizationType: apigateway.AuthorizationType.NONE,
         },
 
-        // CORS configuration.
         defaultCorsPreflightOptions: {
           allowOrigins: apigateway.Cors.ALL_ORIGINS,
 
@@ -152,22 +128,21 @@ export class HelloLambdaCdkStack extends cdk.Stack {
 
           allowHeaders: [
             'Content-Type',
+            'Authorization',
+            'X-Amz-Date',
+            'X-Amz-Security-Token',
+            'X-Amz-Content-Sha256',
           ],
         },
 
-        // API Gateway stage configuration.
         deployOptions: {
-
           stageName: 'prod',
 
-          // Limit excessive requests.
           throttlingRateLimit: 5,
           throttlingBurstLimit: 10,
 
-          // CloudWatch API metrics.
           metricsEnabled: true,
 
-          // Log requests without request body contents.
           accessLogDestination:
             new apigateway.LogGroupLogDestination(
               apiAccessLogs
@@ -179,29 +154,51 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       }
     );
 
-
     // ============================================================
-    // 5. API GATEWAY - LAMBDA INTEGRATION
-    // ============================================================
-
-    const crudIntegration =
-      new apigateway.LambdaIntegration(
-        crudFunction
-      );
-
-
-    // ============================================================
-    // 6. CRUD REST ENDPOINTS
+    // 5. API GATEWAY SECURITY
     // ============================================================
 
-    // /targets
-    const targetsResource =
-      crudApi.root.addResource('targets');
+    // Production write operations require AWS IAM authorization.
+    //
+    // BetaGamma temporarily allows unauthenticated writes because
+    // the existing CodePipeline integration tests use urllib
+    // without AWS SigV4 request signing.
+    //
+    // TODO: Update integration tests with SigV4 signing and grant
+    // execute-api:Invoke to the test role, then enable IAM for
+    // BetaGamma as well.
+    //
+    // AWS_IAM requires the caller to sign requests and possess
+    // execute-api:Invoke permission. It is not an API key.
+
+    const writeAuthorization = isProduction
+      ? apigateway.AuthorizationType.IAM
+      : apigateway.AuthorizationType.NONE;
+
+    const writeMethodOptions: apigateway.MethodOptions = {
+      authorizationType: writeAuthorization,
+      apiKeyRequired: false,
+    };
+
+    // ============================================================
+    // 6. LAMBDA INTEGRATION
+    // ============================================================
+
+    const crudIntegration = new apigateway.LambdaIntegration(
+      crudFunction
+    );
+
+    // ============================================================
+    // 7. CRUD REST ENDPOINTS
+    // ============================================================
+
+    const targetsResource = crudApi.root.addResource('targets');
 
     // POST /targets
     targetsResource.addMethod(
       'POST',
-      crudIntegration
+      crudIntegration,
+      writeMethodOptions
     );
 
     // GET /targets
@@ -210,7 +207,6 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       crudIntegration
     );
 
-    // /targets/{id}
     const targetByIdResource =
       targetsResource.addResource('{id}');
 
@@ -223,18 +219,19 @@ export class HelloLambdaCdkStack extends cdk.Stack {
     // PUT /targets/{id}
     targetByIdResource.addMethod(
       'PUT',
-      crudIntegration
+      crudIntegration,
+      writeMethodOptions
     );
 
     // DELETE /targets/{id}
     targetByIdResource.addMethod(
       'DELETE',
-      crudIntegration
+      crudIntegration,
+      writeMethodOptions
     );
 
-
     // ============================================================
-    // 7. OUTPUT - CRUD API URL
+    // 8. API GATEWAY OUTPUT
     // ============================================================
 
     this.crudApiUrlOutput = new cdk.CfnOutput(
@@ -242,15 +239,12 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       'WebCrawlerCrudApiUrl',
       {
         value: `${crudApi.url}targets`,
-
-        description:
-          'Web Crawler CRUD API endpoint',
+        description: 'Web Crawler CRUD API endpoint',
       }
     );
 
-
     // ============================================================
-    // 8. WEB HEALTH MONITORING LAMBDA
+    // 9. WEBSITE MONITORING LAMBDA
     // ============================================================
 
     const websiteMonitor = new lambda.Function(
@@ -258,11 +252,8 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       'HelloLambdaFunction',
       {
         runtime: lambda.Runtime.PYTHON_3_12,
-
         handler: 'index.lambda_handler',
-
         timeout: cdk.Duration.seconds(30),
-
         code: lambda.Code.fromAsset('lambda'),
 
         environment: {
@@ -271,26 +262,21 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       }
     );
 
-    // Allow the monitoring Lambda to read targets.
     targetTable.grantReadData(websiteMonitor);
 
-
     // ============================================================
-    // 9. PRODUCTION LAMBDA ALIAS
+    // 10. PRODUCTION LAMBDA ALIAS
     // ============================================================
 
     let monitorTarget: lambda.IFunction = websiteMonitor;
-
     let prodAlias: lambda.Alias | undefined;
 
     if (isProduction) {
-
       prodAlias = new lambda.Alias(
         this,
         'ProdAlias',
         {
           aliasName: 'live',
-
           version: websiteMonitor.currentVersion,
         }
       );
@@ -298,58 +284,42 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       monitorTarget = prodAlias;
     }
 
-
     // ============================================================
-    // 10. PRODUCTION OPERATIONAL METRICS
+    // 11. PRODUCTION OPERATIONAL ALARMS
     // ============================================================
 
     let prodErrorAlarm: cloudwatch.Alarm | undefined;
-
     let prodDurationAlarm: cloudwatch.Alarm | undefined;
 
     if (isProduction && prodAlias) {
+      const invocationMetric = prodAlias.metricInvocations({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      });
 
-      const invocationMetric =
-        prodAlias.metricInvocations({
-          period: cdk.Duration.minutes(5),
-          statistic: 'Sum',
-        });
+      const durationMetric = prodAlias.metricDuration({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Average',
+      });
 
-      const durationMetric =
-        prodAlias.metricDuration({
-          period: cdk.Duration.minutes(5),
-          statistic: 'Average',
-        });
+      const errorMetric = prodAlias.metricErrors({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      });
 
-      const errorMetric =
-        prodAlias.metricErrors({
-          period: cdk.Duration.minutes(5),
-          statistic: 'Sum',
-        });
-
-
-      // ----------------------------------------------------------
-      // Alarm: No Lambda invocations for one hour
-      // ----------------------------------------------------------
-
+      // Detect missing Lambda invocations.
       new cloudwatch.Alarm(
         this,
         'ProdInvocationAlarm',
         {
-          alarmName:
-            'Prod-WebHealth-No-Invocations',
-
+          alarmName: 'Prod-WebHealth-No-Invocations',
           metric: invocationMetric,
-
           threshold: 1,
-
           evaluationPeriods: 12,
-
           datapointsToAlarm: 12,
 
           comparisonOperator:
-            cloudwatch.ComparisonOperator
-              .LESS_THAN_THRESHOLD,
+            cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
 
           treatMissingData:
             cloudwatch.TreatMissingData.BREACHING,
@@ -359,29 +329,19 @@ export class HelloLambdaCdkStack extends cdk.Stack {
         }
       );
 
-
-      // ----------------------------------------------------------
-      // Alarm: High Lambda duration
-      // ----------------------------------------------------------
-
+      // Detect excessive execution time.
       prodDurationAlarm = new cloudwatch.Alarm(
         this,
         'ProdDurationAlarm',
         {
-          alarmName:
-            'Prod-WebHealth-High-Duration',
-
+          alarmName: 'Prod-WebHealth-High-Duration',
           metric: durationMetric,
-
           threshold: 10000,
-
           evaluationPeriods: 1,
-
           datapointsToAlarm: 1,
 
           comparisonOperator:
-            cloudwatch.ComparisonOperator
-              .GREATER_THAN_THRESHOLD,
+            cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
 
           treatMissingData:
             cloudwatch.TreatMissingData.NOT_BREACHING,
@@ -391,29 +351,19 @@ export class HelloLambdaCdkStack extends cdk.Stack {
         }
       );
 
-
-      // ----------------------------------------------------------
-      // Alarm: Lambda execution errors
-      // ----------------------------------------------------------
-
+      // Detect Lambda execution errors.
       prodErrorAlarm = new cloudwatch.Alarm(
         this,
         'ProdErrorAlarm',
         {
-          alarmName:
-            'Prod-WebHealth-Lambda-Errors',
-
+          alarmName: 'Prod-WebHealth-Lambda-Errors',
           metric: errorMetric,
-
           threshold: 1,
-
           evaluationPeriods: 1,
-
           datapointsToAlarm: 1,
 
           comparisonOperator:
-            cloudwatch.ComparisonOperator
-              .GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
 
           treatMissingData:
             cloudwatch.TreatMissingData.NOT_BREACHING,
@@ -424,9 +374,8 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       );
     }
 
-
     // ============================================================
-    // 11. PRODUCTION AUTOMATIC ROLLBACK
+    // 12. AUTOMATIC LAMBDA ROLLBACK
     // ============================================================
 
     if (
@@ -435,15 +384,12 @@ export class HelloLambdaCdkStack extends cdk.Stack {
       prodErrorAlarm &&
       prodDurationAlarm
     ) {
-
       const rollbackFunction = new lambda.Function(
         this,
         'ProdRollbackFunction',
         {
           runtime: lambda.Runtime.PYTHON_3_12,
-
           handler: 'index.lambda_handler',
-
           timeout: cdk.Duration.seconds(30),
 
           environment: {
@@ -459,7 +405,6 @@ lambda_client = boto3.client("lambda")
 
 
 def lambda_handler(event, context):
-
     function_name = os.environ["FUNCTION_NAME"]
     alias_name = os.environ["ALIAS_NAME"]
 
@@ -481,9 +426,7 @@ def lambda_handler(event, context):
         Name=alias_name
     )
 
-    current_version = int(
-        alias["FunctionVersion"]
-    )
+    current_version = int(alias["FunctionVersion"])
 
     response = lambda_client.list_versions_by_function(
         FunctionName=function_name
@@ -507,9 +450,7 @@ def lambda_handler(event, context):
             "reason": "No previous Lambda version exists"
         }
 
-    previous_version = str(
-        max(previous_versions)
-    )
+    previous_version = str(max(previous_versions))
 
     lambda_client.update_alias(
         FunctionName=function_name,
@@ -527,8 +468,6 @@ def lambda_handler(event, context):
         }
       );
 
-
-      // Permissions for rollback Lambda.
       rollbackFunction.addToRolePolicy(
         new iam.PolicyStatement({
           actions: [
@@ -544,8 +483,6 @@ def lambda_handler(event, context):
         })
       );
 
-
-      // Trigger rollback on Production alarms.
       const rollbackRule = new events.Rule(
         this,
         'ProdAutomaticRollbackRule',
@@ -566,9 +503,7 @@ def lambda_handler(event, context):
               ],
 
               state: {
-                value: [
-                  'ALARM',
-                ],
+                value: ['ALARM'],
               },
             },
           },
@@ -576,15 +511,12 @@ def lambda_handler(event, context):
       );
 
       rollbackRule.addTarget(
-        new targets.LambdaFunction(
-          rollbackFunction
-        )
+        new targets.LambdaFunction(rollbackFunction)
       );
     }
 
-
     // ============================================================
-    // 12. IAM - CLOUDWATCH METRIC PERMISSIONS
+    // 13. CLOUDWATCH METRIC PERMISSIONS
     // ============================================================
 
     websiteMonitor.addToRolePolicy(
@@ -593,15 +525,12 @@ def lambda_handler(event, context):
           'cloudwatch:PutMetricData',
         ],
 
-        resources: [
-          '*',
-        ],
+        resources: ['*'],
       })
     );
 
-
     // ============================================================
-    // 13. EVENTBRIDGE SCHEDULE
+    // 14. EVENTBRIDGE - EVERY 30 MINUTES
     // ============================================================
 
     const scheduleRule = new events.Rule(
@@ -615,14 +544,11 @@ def lambda_handler(event, context):
     );
 
     scheduleRule.addTarget(
-      new targets.LambdaFunction(
-        monitorTarget
-      )
+      new targets.LambdaFunction(monitorTarget)
     );
 
-
     // ============================================================
-    // 14. MONITORED WEBSITES
+    // 15. MONITORED WEBSITES
     // ============================================================
 
     const websites = [
@@ -640,16 +566,14 @@ def lambda_handler(event, context):
       },
     ];
 
-
     // ============================================================
-    // 15. CLOUDWATCH AVAILABILITY METRICS
+    // 16. AVAILABILITY METRICS
     // ============================================================
 
     const availabilityMetrics = websites.map(
       (website) =>
         new cloudwatch.Metric({
           namespace: 'WSU2026/WebHealth',
-
           metricName: 'Availability',
 
           dimensionsMap: {
@@ -657,21 +581,18 @@ def lambda_handler(event, context):
           },
 
           statistic: 'Average',
-
           period: cdk.Duration.minutes(30),
         })
     );
 
-
     // ============================================================
-    // 16. CLOUDWATCH LATENCY METRICS
+    // 17. LATENCY METRICS
     // ============================================================
 
     const latencyMetrics = websites.map(
       (website) =>
         new cloudwatch.Metric({
           namespace: 'WSU2026/WebHealth',
-
           metricName: 'Latency',
 
           dimensionsMap: {
@@ -679,16 +600,13 @@ def lambda_handler(event, context):
           },
 
           statistic: 'Average',
-
           unit: cloudwatch.Unit.MILLISECONDS,
-
           period: cdk.Duration.minutes(30),
         })
     );
 
-
     // ============================================================
-    // 17. CLOUDWATCH DASHBOARD
+    // 18. CLOUDWATCH DASHBOARD
     // ============================================================
 
     const dashboard = new cloudwatch.Dashboard(
@@ -700,42 +618,32 @@ def lambda_handler(event, context):
       }
     );
 
+    const availabilityWidget = new cloudwatch.GraphWidget({
+      title: 'Website Availability',
+      left: availabilityMetrics,
+      width: 24,
+      height: 8,
 
-    const availabilityWidget =
-      new cloudwatch.GraphWidget({
-        title: 'Website Availability',
+      leftYAxis: {
+        min: 0,
+        max: 1,
+      },
+    });
 
-        left: availabilityMetrics,
-
-        width: 24,
-        height: 8,
-
-        leftYAxis: {
-          min: 0,
-          max: 1,
-        },
-      });
-
-
-    const latencyWidget =
-      new cloudwatch.GraphWidget({
-        title: 'Website Latency',
-
-        left: latencyMetrics,
-
-        width: 24,
-        height: 8,
-      });
-
+    const latencyWidget = new cloudwatch.GraphWidget({
+      title: 'Website Latency',
+      left: latencyMetrics,
+      width: 24,
+      height: 8,
+    });
 
     dashboard.addWidgets(
       availabilityWidget,
       latencyWidget
     );
 
-
     // ============================================================
-    // 18. SNS ALARM NOTIFICATIONS
+    // 19. SNS NOTIFICATIONS
     // ============================================================
 
     const alarmTopic = new sns.Topic(
@@ -750,16 +658,14 @@ def lambda_handler(event, context):
       }
     );
 
-
     alarmTopic.addSubscription(
       new subscriptions.EmailSubscription(
         '22222784@student.westernsydney.edu.au'
       )
     );
 
-
     // ============================================================
-    // 19. DYNAMODB - ALARM LOG TABLE
+    // 20. DYNAMODB - ALARM LOGGING
     // ============================================================
 
     const alarmLogTable = new dynamodb.Table(
@@ -781,9 +687,8 @@ def lambda_handler(event, context):
       }
     );
 
-
     // ============================================================
-    // 20. LAMBDA - ALARM LOGGER
+    // 21. ALARM LOGGER LAMBDA
     // ============================================================
 
     const alarmLogger = new lambda.Function(
@@ -791,7 +696,6 @@ def lambda_handler(event, context):
       'AlarmLoggerFunction',
       {
         runtime: lambda.Runtime.PYTHON_3_12,
-
         handler: 'index.lambda_handler',
 
         code: lambda.Code.fromAsset(
@@ -804,14 +708,10 @@ def lambda_handler(event, context):
       }
     );
 
-
-    alarmLogTable.grantWriteData(
-      alarmLogger
-    );
-
+    alarmLogTable.grantWriteData(alarmLogger);
 
     // ============================================================
-    // 21. EVENTBRIDGE - ALARM STATE CHANGES
+    // 22. ALARM STATE CHANGE EVENTS
     // ============================================================
 
     const alarmStateChangeRule = new events.Rule(
@@ -819,9 +719,7 @@ def lambda_handler(event, context):
       'AlarmStateChangeRule',
       {
         eventPattern: {
-          source: [
-            'aws.cloudwatch',
-          ],
+          source: ['aws.cloudwatch'],
 
           detailType: [
             'CloudWatch Alarm State Change',
@@ -830,98 +728,74 @@ def lambda_handler(event, context):
       }
     );
 
-
     alarmStateChangeRule.addTarget(
-      new targets.LambdaFunction(
-        alarmLogger
-      )
+      new targets.LambdaFunction(alarmLogger)
     );
 
-
     // ============================================================
-    // 22. WEBSITE AVAILABILITY ALARMS
+    // 23. WEBSITE AVAILABILITY ALARMS
     // ============================================================
 
     websites.forEach((website, index) => {
+      const availabilityAlarm = new cloudwatch.Alarm(
+        this,
+        `${website.name}AvailabilityAlarm`,
+        {
+          metric: availabilityMetrics[index],
+          threshold: 1,
+          evaluationPeriods: 1,
+          datapointsToAlarm: 1,
 
-      const availabilityAlarm =
-        new cloudwatch.Alarm(
-          this,
-          `${website.name}AvailabilityAlarm`,
-          {
-            metric: availabilityMetrics[index],
+          comparisonOperator:
+            cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
 
-            threshold: 1,
+          treatMissingData:
+            cloudwatch.TreatMissingData.MISSING,
 
-            evaluationPeriods: 1,
+          alarmName:
+            `${alarmPrefix}${website.name}-Availability-Alarm-CDK`,
 
-            datapointsToAlarm: 1,
-
-            comparisonOperator:
-              cloudwatch.ComparisonOperator
-                .LESS_THAN_THRESHOLD,
-
-            treatMissingData:
-              cloudwatch.TreatMissingData.MISSING,
-
-            alarmName:
-              `${alarmPrefix}${website.name}-Availability-Alarm-CDK`,
-
-            alarmDescription:
-              `Alarm when ${website.name} availability falls below 1`,
-          }
-        );
-
+          alarmDescription:
+            `Alarm when ${website.name} availability falls below 1`,
+        }
+      );
 
       availabilityAlarm.addAlarmAction(
-        new cloudwatchActions.SnsAction(
-          alarmTopic
-        )
+        new cloudwatchActions.SnsAction(alarmTopic)
       );
     });
 
-
     // ============================================================
-    // 23. WEBSITE LATENCY ALARMS
+    // 24. WEBSITE LATENCY ALARMS
     // ============================================================
 
     websites.forEach((website, index) => {
+      const latencyAlarm = new cloudwatch.Alarm(
+        this,
+        `${website.name}LatencyAlarm`,
+        {
+          metric: latencyMetrics[index],
+          threshold: 1000,
+          evaluationPeriods: 1,
+          datapointsToAlarm: 1,
 
-      const latencyAlarm =
-        new cloudwatch.Alarm(
-          this,
-          `${website.name}LatencyAlarm`,
-          {
-            metric: latencyMetrics[index],
+          comparisonOperator:
+            cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
 
-            threshold: 1000,
+          treatMissingData:
+            cloudwatch.TreatMissingData.MISSING,
 
-            evaluationPeriods: 1,
+          alarmName:
+            `${alarmPrefix}${website.name}-Latency-Alarm-CDK`,
 
-            datapointsToAlarm: 1,
-
-            comparisonOperator:
-              cloudwatch.ComparisonOperator
-                .GREATER_THAN_THRESHOLD,
-
-            treatMissingData:
-              cloudwatch.TreatMissingData.MISSING,
-
-            alarmName:
-              `${alarmPrefix}${website.name}-Latency-Alarm-CDK`,
-
-            alarmDescription:
-              `Alarm when ${website.name} latency exceeds 1000 milliseconds`,
-          }
-        );
-
+          alarmDescription:
+            `Alarm when ${website.name} latency exceeds 1000 milliseconds`,
+        }
+      );
 
       latencyAlarm.addAlarmAction(
-        new cloudwatchActions.SnsAction(
-          alarmTopic
-        )
+        new cloudwatchActions.SnsAction(alarmTopic)
       );
     });
-
   }
 }

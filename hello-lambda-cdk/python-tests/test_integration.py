@@ -3,7 +3,54 @@ import uuid
 import json
 import urllib.request
 import urllib.error
+import boto3
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
 
+# ---------------------------------------------------------
+# AWS Signature Version 4 - API Gateway Authentication
+# ---------------------------------------------------------
+
+def signed_api_request(url, method, data=None):
+    session = boto3.Session()
+    credentials = session.get_credentials()
+
+    if credentials is None:
+        raise RuntimeError(
+            "AWS credentials are required to sign API requests"
+        )
+
+    region = (
+        os.environ.get("AWS_REGION")
+        or os.environ.get("AWS_DEFAULT_REGION")
+        or session.region_name
+        or "ap-southeast-2"
+    )
+
+    headers = {}
+
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+
+    aws_request = AWSRequest(
+        method=method.upper(),
+        url=url,
+        data=data,
+        headers=headers
+    )
+
+    SigV4Auth(
+        credentials.get_frozen_credentials(),
+        "execute-api",
+        region
+    ).add_auth(aws_request)
+
+    return urllib.request.Request(
+        url=url,
+        data=data,
+        headers=dict(aws_request.headers.items()),
+        method=method.upper()
+    )   
 
 # ---------------------------------------------------------
 # INTEGRATION TEST 1
@@ -141,14 +188,11 @@ def test_live_crud_api():
         "enabled": True
     }).encode("utf-8")
 
-    create_request = urllib.request.Request(
-        f"{base_url}/targets",
-        data=create_data,
-        headers={
-            "Content-Type": "application/json"
-        },
-        method="POST"
-    )
+    create_request = signed_api_request(
+    f"{base_url}/targets",
+    "POST",
+    create_data
+)
 
     try:
         with urllib.request.urlopen(
@@ -189,13 +233,11 @@ def test_live_crud_api():
             "enabled": False
         }).encode("utf-8")
 
-        update_request = urllib.request.Request(
+      
+        update_request = signed_api_request(
             target_url,
-            data=update_data,
-            headers={
-                "Content-Type": "application/json"
-            },
-            method="PUT"
+            "PUT",
+            update_data
         )
 
         with urllib.request.urlopen(
@@ -215,9 +257,10 @@ def test_live_crud_api():
         # DELETE
         # Always clean up the integration-test record
         # -------------------------------------------------
-        delete_request = urllib.request.Request(
+            
+        delete_request = signed_api_request(
             target_url,
-            method="DELETE"
+            "DELETE"
         )
 
         try:

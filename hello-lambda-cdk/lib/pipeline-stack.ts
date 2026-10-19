@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as pipelines from 'aws-cdk-lib/pipelines';
 import { WebHealthStage } from './web-health-stage';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 export class PipelineStack extends cdk.Stack {
   constructor(
@@ -111,13 +112,25 @@ export class PipelineStack extends cdk.Stack {
     // Production will NOT continue if integration tests fail.
     // ------------------------------------------------------------
     const integrationTestBlocker =
-      new pipelines.ShellStep(
+      new pipelines.CodeBuildStep(
         'IntegrationTestBlocker',
         {
           input: source,
           envFromCfnOutputs: {
             API_TARGETS_URL: betaGammaStage.webHealthStack.crudApiUrlOutput,
           },
+
+rolePolicyStatements: [
+  new iam.PolicyStatement({
+    effect: iam.Effect.ALLOW,
+    actions: ['execute-api:Invoke'],
+    resources: [
+      `arn:${cdk.Aws.PARTITION}:execute-api:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:or9n0whdv9/prod/POST/targets`,
+      `arn:${cdk.Aws.PARTITION}:execute-api:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:or9n0whdv9/prod/PUT/targets/*`,
+      `arn:${cdk.Aws.PARTITION}:execute-api:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:or9n0whdv9/prod/DELETE/targets/*`,
+    ],
+  }),
+],
 
           commands: [
             'cd hello-lambda-cdk',
